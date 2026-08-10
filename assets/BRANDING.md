@@ -2,7 +2,8 @@
 
 | Asset | Path | Use |
 |-------|------|-----|
-| Bot avatar / logo | `assets/greekbot-avatar.png` | HellCat logo with **GreekBot** wordmark — Discord Bot icon + `/help` thumbnail |
+| Bot avatar / logo | `assets/greekbot-avatar.png` | Fun Discord-style 8-bit HellCats + **GreekBot** wordmark (primary) |
+| Alt avatar | `assets/greekbot-avatar-alt.png` | Goofy triple-cat pixel badge variant |
 
 ## Discord Developer Portal copy
 
@@ -11,12 +12,12 @@
 
 ### Short description (Bot profile / About Me — max ~190 chars recommended)
 ```
-HellCatCoins casino + Inferno Games for GreekGodBerry. Spin, duel, crash, and survive — virtual coins only. 18+. /help
+HellCatCoins chaos for GreekGodBerry 🐱 Casino, duels, crash & Inferno Games. Virtual coins only. 18+. Type /help
 ```
 
 ### Longer description (Application Description / store-style)
 ```
-GreekBot is the HellCat games bot for the GreekGodBerry community. Stack virtual HellCatCoins, tip friends, spin slots, ride crash, duel with coinflip & RPS, hit the blackjack table, and enter Inferno Games — a Hunger Games–style arena with night infection, traps, and prize pools. Buttons, live embeds, and /help guides. Entertainment only — no real money. 18+.
+GreekBot is the fun HellCat games bot for the GreekGodBerry community. Stack virtual HellCatCoins, tip friends, spin slots, ride crash, duel with coinflip & RPS, hit blackjack, and jump into Inferno Games — a silly-deadly Hunger Games–style arena. Buttons, live embeds, /help guides. Entertainment only — no real money. 18+.
 ```
 
 ### Tags (Application → Information → Tags — pick what Discord allows)
