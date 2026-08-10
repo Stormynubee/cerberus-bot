@@ -13,4 +13,6 @@
 
 ## In-chat
 
-`/hell` attaches this logo and uses interactive category buttons (Wallet, PvP, Casino, Inferno, Admin).
+`/help` (or `/hell`) attaches the logo + a looping guide GIF per tab (Start / Wallet / PvP / Casino / Inferno / Admin).
+
+GIFs live in `assets/gifs/` — regenerate with `npm run gifs:help` (needs ffmpeg on PATH).

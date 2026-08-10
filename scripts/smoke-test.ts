@@ -2,6 +2,8 @@
  * Offline smoke tests for GreekBot core logic (no Discord token required).
  * Run: npx tsx scripts/smoke-test.ts
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { prisma } from "../src/db.js";
 import {
   assertBetAmount,
@@ -201,6 +203,7 @@ async function main() {
   await test("slash commands load (including hungergames)", async () => {
     const commands = await loadCommands();
     const needed = [
+      "help",
       "hell",
       "balance",
       "daily",
@@ -216,9 +219,10 @@ async function main() {
       "admin",
     ];
     for (const name of needed) {
-      assert(commands.has(name), `missing command /${name}`);
+      assert(commands.has(name), `missing /${name}`);
     }
     assert(commands.size >= needed.length, "command count");
+    assert(existsSync(path.join(process.cwd(), "assets/gifs/home.gif")), "home.gif missing");
   });
 
   await prisma.$disconnect();

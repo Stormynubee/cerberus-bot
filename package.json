@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "start:prod": "npm run db:push && npm start",
     "deploy-commands": "tsx src/deploy-commands.ts",
+    "gifs:help": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-help-gifs.ps1",
     "test:smoke": "tsx scripts/smoke-test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

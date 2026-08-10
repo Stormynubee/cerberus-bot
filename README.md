@@ -18,7 +18,7 @@ Set the bot username to **GreekBot**. Optional: `SYNC_BOT_AVATAR=1` once to push
 ### Wallet
 | Command | What it does |
 |--------|----------------|
-| `/hell` | Interactive help (buttons + logo) |
+| `/help` | Guided help with steps + demo GIFs (also `/hell`) |
 | `/balance` | Wallet |
 | `/daily` | Daily claim + streak bonus |
 | `/tip` | Send HCC |

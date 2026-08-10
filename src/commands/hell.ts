@@ -1,11 +1,9 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
-import { handleHelpButton, replyHelp } from "../services/helpGuide.js";
-
-export { handleHelpButton };
+import { replyHelp } from "../services/helpGuide.js";
 
 export const data = new SlashCommandBuilder()
-  .setName("help")
-  .setDescription("Guided GreekBot help — commands, steps, and demo GIFs");
+  .setName("hell")
+  .setDescription("GreekBot help (same as /help) — guide + demo GIFs");
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   await replyHelp(interaction, "home");

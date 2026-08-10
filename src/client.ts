@@ -93,7 +93,7 @@ export function createClient(commands: Collection<string, BotCommand>) {
 
       if (interaction.isButton()) {
         const id = interaction.customId;
-        if (id.startsWith("hell:")) {
+        if (id.startsWith("help:") || id.startsWith("hell:")) {
           await handleHelpButton(interaction);
           return;
         }
