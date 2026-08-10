@@ -2,7 +2,7 @@
 
 | Asset | Path | Use |
 |-------|------|-----|
-| Bot avatar / logo | `assets/greekbot-avatar.png` | Discord Developer Portal → Bot → Icon; also shown in `/hell` |
+| Bot avatar / logo | `assets/greekbot-avatar.png` | Cool HellCat / triple-cat Cerberus mascot — Discord Bot icon + `/hell` thumbnail |
 
 ## Discord setup (one-time)
 
