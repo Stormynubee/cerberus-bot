@@ -8,13 +8,15 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { prisma } from "../db.js";
+import { withUserLock } from "../locks.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
   addToJackpot,
   applyRake,
   assertBetAmount,
   creditForced,
-  debit,
+  creditForcedUnlocked,
+  debitUnlocked,
   EconomyError,
   ensureUser,
   recordMatchResult,
@@ -61,36 +63,45 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     assertBetAmount(amount);
     await ensureUser(interaction.user.id, interaction.user.username);
 
-    for (const r of rounds.values()) {
-      if (r.userId === interaction.user.id && !r.ended) {
-        throw new EconomyError("Finish your current crash round first.");
+    const session = await withUserLock(interaction.user.id, async () => {
+      for (const r of rounds.values()) {
+        if (r.userId === interaction.user.id && !r.ended) {
+          throw new EconomyError("Finish your current crash round first.");
+        }
       }
-    }
 
-    const existing = await prisma.gameSession.findFirst({
-      where: {
-        type: "crash",
-        status: "active",
-        playerOneId: interaction.user.id,
-      },
+      const existing = await prisma.gameSession.findFirst({
+        where: {
+          type: "crash",
+          status: "active",
+          playerOneId: interaction.user.id,
+        },
+      });
+      if (existing) throw new EconomyError("Finish your current crash round first.");
+
+      await debitUnlocked(interaction.user.id, amount, "crash_bet");
+      const crashAt = crashPoint();
+
+      try {
+        return await prisma.gameSession.create({
+          data: {
+            type: "crash",
+            status: "active",
+            wager: amount,
+            playerOneId: interaction.user.id,
+            payload: JSON.stringify({ crashAt }),
+            channelId: interaction.channelId,
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          },
+        });
+      } catch (err) {
+        await creditForcedUnlocked(interaction.user.id, amount, "crash_refund_create_fail");
+        throw err;
+      }
     });
-    if (existing) throw new EconomyError("Finish your current crash round first.");
 
-    await debit(interaction.user.id, amount, "crash_bet");
-    const crashAt = crashPoint();
-
-    const session = await prisma.gameSession.create({
-      data: {
-        type: "crash",
-        status: "active",
-        wager: amount,
-        playerOneId: interaction.user.id,
-        payload: JSON.stringify({ crashAt }),
-        channelId: interaction.channelId,
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      },
-    });
-
+    const payload = JSON.parse(session.payload) as { crashAt: number };
+    const crashAt = payload.crashAt;
     const roundId = session.id;
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -148,10 +159,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const round = rounds.get(roundId);
     if (!round || !claimEnd(round)) return;
-    rounds.delete(roundId);
 
     const settled = await claimSessionStatus(session.id, "active", "settled");
-    if (!settled) return;
+    if (!settled) {
+      round.ended = false;
+      return;
+    }
+    rounds.delete(roundId);
 
     await addToJackpot(Math.floor(amount * 0.02));
     await recordMatchResult({
@@ -172,9 +186,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Crash failed.";
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
+      await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+      await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     }
   }
 }
@@ -205,37 +219,49 @@ export async function handleCrashButton(interaction: ButtonInteraction) {
     });
     return;
   }
-  rounds.delete(roundId);
 
   const settled = await claimSessionStatus(round.sessionId, "active", "settled");
   if (!settled) {
+    round.ended = false;
     await interaction.reply({
       embeds: [errorEmbed("This rocket already finished.")],
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
+  rounds.delete(roundId);
 
-  const gross = Math.floor(round.bet * round.multiplier);
-  const { net, rake } = applyRake(gross);
-  await creditForced(round.userId, net, "crash_cashout", round.sessionId);
-  await addToJackpot(rake);
-  await recordMatchResult({
-    winnerId: round.userId,
-    loserId: null,
-    amountWon: net - round.bet,
-  });
+  try {
+    const gross = Math.floor(round.bet * round.multiplier);
+    const { net, rake } = applyRake(gross);
+    await creditForced(round.userId, net, "crash_cashout", round.sessionId);
+    await addToJackpot(rake);
+    await recordMatchResult({
+      winnerId: round.userId,
+      loserId: null,
+      amountWon: net - round.bet,
+    });
 
-  await interaction.update({
-    embeds: [
-      baseEmbed(theme.colors.success)
-        .setTitle("🪂 Cashed out!")
-        .setDescription(
-          `Escaped at **${round.multiplier.toFixed(2)}x** for **${formatCoins(net)}**.`,
-        ),
-    ],
-    components: [],
-  });
+    await interaction.update({
+      embeds: [
+        baseEmbed(theme.colors.success)
+          .setTitle("🪂 Cashed out!")
+          .setDescription(
+            `Escaped at **${round.multiplier.toFixed(2)}x** for **${formatCoins(net)}**.`,
+          ),
+      ],
+      components: [],
+    });
 
-  await maybeAnnounceBigWin(interaction, net - round.bet, "crash");
+    await maybeAnnounceBigWin(interaction, net - round.bet, "crash");
+  } catch (err) {
+    console.warn("[crash] cashout payout failed, reverting", round.sessionId, err);
+    await prisma.gameSession.updateMany({
+      where: { id: round.sessionId, status: "settled" },
+      data: { status: "active" },
+    });
+    round.ended = false;
+    rounds.set(roundId, round);
+    throw err;
+  }
 }

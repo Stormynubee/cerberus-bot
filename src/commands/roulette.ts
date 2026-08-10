@@ -1,5 +1,6 @@
 import {
   ChatInputCommandInteraction,
+  MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
 import { animateSteps } from "../services/animation.js";
@@ -7,7 +8,7 @@ import {
   addToJackpot,
   applyRake,
   assertBetAmount,
-  credit,
+  creditForced,
   debit,
   EconomyError,
   ensureUser,
@@ -44,14 +45,12 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("amount", true);
   const bet = interaction.options.getString("bet", true) as "red" | "black" | "green";
+  let debited = false;
+  let settled = false;
 
   try {
     assertBetAmount(amount);
     await ensureUser(interaction.user.id, interaction.user.username);
-    await debit(interaction.user.id, amount, "roulette_bet");
-
-    const result = Math.floor(Math.random() * 37);
-    const color = colorOf(result);
 
     await interaction.reply({
       embeds: [
@@ -60,6 +59,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           .setDescription("The wheel blurs into fire…"),
       ],
     });
+
+    await debit(interaction.user.id, amount, "roulette_bet");
+    debited = true;
+
+    const result = Math.floor(Math.random() * 37);
+    const color = colorOf(result);
+
     const msg = await interaction.fetchReply();
     await animateSteps(
       msg,
@@ -75,8 +81,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (won) {
       const gross = amount * mult;
       const { net, rake } = applyRake(gross);
-      await credit(interaction.user.id, net, "roulette_win");
+      await creditForced(interaction.user.id, net, "roulette_win");
       await addToJackpot(rake);
+      settled = true;
       await recordMatchResult({
         winnerId: interaction.user.id,
         loserId: null,
@@ -92,6 +99,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     } else {
       await addToJackpot(Math.floor(amount * 0.02));
+      settled = true;
       await recordMatchResult({
         winnerId: null,
         loserId: interaction.user.id,
@@ -106,11 +114,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     }
   } catch (err) {
+    if (debited && !settled) {
+      await creditForced(interaction.user.id, amount, "roulette_refund_error").catch((e) =>
+        console.warn("[roulette] refund failed", e),
+      );
+    }
     const msg = err instanceof EconomyError ? err.message : "Roulette failed.";
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
+      await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+      await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     }
   }
 }

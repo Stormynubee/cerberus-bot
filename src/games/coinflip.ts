@@ -285,9 +285,13 @@ export async function handleCoinflipButton(interaction: ButtonInteraction) {
     try {
       await debit(session.playerTwoId, session.wager, "coinflip_pvp_escrow", session.id);
     } catch (err) {
-      // Roll back to cancelled and refund p1
-      await claimSessionStatus(session.id, "active", "cancelled");
-      await creditForced(session.playerOneId, session.wager, "coinflip_refund_accept_fail", session.id);
+      // Refund p1 first, then cancel — so a failed credit leaves session active for sweep.
+      try {
+        await creditForced(session.playerOneId, session.wager, "coinflip_refund_accept_fail", session.id);
+        await claimSessionStatus(session.id, "active", "cancelled");
+      } catch (refundErr) {
+        console.warn("[coinflip] accept-fail refund", session.id, refundErr);
+      }
       const msg = err instanceof EconomyError ? err.message : "Could not lock wager.";
       await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
       return;
@@ -313,11 +317,25 @@ export async function handleCoinflipButton(interaction: ButtonInteraction) {
 
     const settled = await claimSessionStatus(session.id, "active", "settled");
     if (!settled) {
-      // Shouldn't happen; refund both if somehow double-settled
+      try {
+        await creditForced(session.playerOneId, session.wager, "coinflip_refund_race", session.id);
+        await creditForced(session.playerTwoId!, session.wager, "coinflip_refund_race", session.id);
+      } catch (refundErr) {
+        console.warn("[coinflip] settle-race refund", session.id, refundErr);
+      }
       return;
     }
 
-    await creditForced(winnerId, pot, "coinflip_pvp_win", session.id);
+    try {
+      await creditForced(winnerId, pot, "coinflip_pvp_win", session.id);
+    } catch (err) {
+      console.warn("[coinflip] payout failed, reverting settled", session.id, err);
+      await prisma.gameSession.updateMany({
+        where: { id: session.id, status: "settled" },
+        data: { status: "active" },
+      });
+      throw err;
+    }
     await recordMatchResult({ winnerId, loserId, amountWon: session.wager });
     await prisma.gameSession.update({
       where: { id: session.id },

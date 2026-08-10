@@ -19,12 +19,40 @@ export async function claimSessionStatus(
   return result.count === 1;
 }
 
-/** Refund pending PvP escrows + abandoned active RPS/blackjack. */
+async function refundActiveEscrow(
+  session: {
+    id: string;
+    playerOneId: string;
+    playerTwoId: string | null;
+    wager: number;
+    type: string;
+  },
+  reason: string,
+  bothPlayers: boolean,
+): Promise<boolean> {
+  const claimed = await claimSessionStatus(session.id, "active", "expired");
+  if (!claimed) return false;
+  try {
+    await creditForced(session.playerOneId, session.wager, reason, session.id);
+    if (bothPlayers && session.playerTwoId) {
+      await creditForced(session.playerTwoId, session.wager, reason, session.id);
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[expiry] ${session.type} refund failed`, session.id, err);
+    await prisma.gameSession.updateMany({
+      where: { id: session.id, status: "expired" },
+      data: { status: "active" },
+    });
+    return false;
+  }
+}
+
+/** Refund pending PvP escrows + abandoned active games. */
 export async function sweepExpiredChallenges(): Promise<number> {
   const now = new Date();
   let refunded = 0;
 
-  // Pending coinflip/rps challenges past expiresAt
   const pending = await prisma.gameSession.findMany({
     where: {
       status: "pending",
@@ -45,7 +73,6 @@ export async function sweepExpiredChallenges(): Promise<number> {
       );
       refunded += 1;
     } catch (err) {
-      // Roll status back so another sweep can retry refund
       console.warn("[expiry] refund failed, reverting status", session.id, err);
       await prisma.gameSession.updateMany({
         where: { id: session.id, status: "expired" },
@@ -54,35 +81,31 @@ export async function sweepExpiredChallenges(): Promise<number> {
     }
   }
 
-  // Active RPS: both players escrowed; abandon after challenge TTL * 3 from updatedAt
-  const rpsCutoff = new Date(now.getTime() - config.challengeTtlSeconds * 3 * 1000);
+  const duelCutoff = new Date(now.getTime() - config.challengeTtlSeconds * 3 * 1000);
+
+  // Active PvP coinflip: both escrowed; abandon if stale
+  const stuckCf = await prisma.gameSession.findMany({
+    where: {
+      status: "active",
+      type: "coinflip",
+      updatedAt: { lt: duelCutoff },
+    },
+  });
+  for (const session of stuckCf) {
+    if (await refundActiveEscrow(session, "coinflip_refund_abandoned", true)) refunded += 1;
+  }
+
   const stuckRps = await prisma.gameSession.findMany({
     where: {
       status: "active",
       type: "rps",
-      updatedAt: { lt: rpsCutoff },
+      updatedAt: { lt: duelCutoff },
     },
   });
-
   for (const session of stuckRps) {
-    const claimed = await claimSessionStatus(session.id, "active", "expired");
-    if (!claimed) continue;
-    try {
-      await creditForced(session.playerOneId, session.wager, "rps_refund_abandoned", session.id);
-      if (session.playerTwoId) {
-        await creditForced(session.playerTwoId, session.wager, "rps_refund_abandoned", session.id);
-      }
-      refunded += 1;
-    } catch (err) {
-      console.warn("[expiry] rps refund failed", session.id, err);
-      await prisma.gameSession.updateMany({
-        where: { id: session.id, status: "expired" },
-        data: { status: "active" },
-      });
-    }
+    if (await refundActiveEscrow(session, "rps_refund_abandoned", true)) refunded += 1;
   }
 
-  // Active blackjack: refund wager after TTL * 5
   const bjCutoff = new Date(now.getTime() - config.challengeTtlSeconds * 5 * 1000);
   const stuckBj = await prisma.gameSession.findMany({
     where: {
@@ -91,23 +114,10 @@ export async function sweepExpiredChallenges(): Promise<number> {
       updatedAt: { lt: bjCutoff },
     },
   });
-
   for (const session of stuckBj) {
-    const claimed = await claimSessionStatus(session.id, "active", "expired");
-    if (!claimed) continue;
-    try {
-      await creditForced(session.playerOneId, session.wager, "bj_refund_abandoned", session.id);
-      refunded += 1;
-    } catch (err) {
-      console.warn("[expiry] bj refund failed", session.id, err);
-      await prisma.gameSession.updateMany({
-        where: { id: session.id, status: "expired" },
-        data: { status: "active" },
-      });
-    }
+    if (await refundActiveEscrow(session, "bj_refund_abandoned", false)) refunded += 1;
   }
 
-  // Active crash rounds abandoned (process died or stuck)
   const stuckCrash = await prisma.gameSession.findMany({
     where: {
       status: "active",
@@ -118,20 +128,23 @@ export async function sweepExpiredChallenges(): Promise<number> {
       ],
     },
   });
-
   for (const session of stuckCrash) {
-    const claimed = await claimSessionStatus(session.id, "active", "expired");
-    if (!claimed) continue;
-    try {
-      await creditForced(session.playerOneId, session.wager, "crash_refund_abandoned", session.id);
-      refunded += 1;
-    } catch (err) {
-      console.warn("[expiry] crash refund failed", session.id, err);
-      await prisma.gameSession.updateMany({
-        where: { id: session.id, status: "expired" },
-        data: { status: "active" },
-      });
-    }
+    if (await refundActiveEscrow(session, "crash_refund_abandoned", false)) refunded += 1;
+  }
+
+  // High-Low runs abandoned (process died or player left)
+  const stuckHl = await prisma.gameSession.findMany({
+    where: {
+      status: "active",
+      type: "highlow",
+      OR: [
+        { expiresAt: { lt: now } },
+        { updatedAt: { lt: new Date(now.getTime() - 15 * 60 * 1000) } },
+      ],
+    },
+  });
+  for (const session of stuckHl) {
+    if (await refundActiveEscrow(session, "highlow_refund_abandoned", false)) refunded += 1;
   }
 
   return refunded;

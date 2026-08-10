@@ -297,70 +297,72 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
     await ensureUser(interaction.user.id, interaction.user.username);
 
     try {
-      const result = await prisma.$transaction(async (tx) => {
-        const game = await tx.arenaGame.findUnique({
-          where: { id: gameId },
-          include: { tributes: true },
-        });
-        if (!game || game.status !== "signup") {
-          throw new EconomyError("Signup is closed.");
-        }
-        if (game.tributes.length >= game.maxPlayers) {
-          throw new EconomyError("The arena is full.");
-        }
-        if (game.tributes.some((t) => t.userId === interaction.user.id)) {
-          throw new EconomyError("You already volunteered.");
-        }
-        return game;
+      const preview = await prisma.arenaGame.findUnique({
+        where: { id: gameId },
+        include: { tributes: true },
       });
-
-      if (result.entryFee > 0) {
-        await debit(interaction.user.id, result.entryFee, "hg_entry", gameId);
+      if (!preview || preview.status !== "signup") {
+        throw new EconomyError("Signup is closed.");
+      }
+      if (preview.tributes.length >= preview.maxPlayers) {
+        throw new EconomyError("The arena is full.");
+      }
+      if (preview.tributes.some((t) => t.userId === interaction.user.id)) {
+        throw new EconomyError("You already volunteered.");
       }
 
+      if (preview.entryFee > 0) {
+        await debit(interaction.user.id, preview.entryFee, "hg_entry", gameId);
+      }
+
+      let prizePool = preview.prizePool;
       try {
-        await prisma.arenaTribute.create({
-          data: {
-            gameId,
-            userId: interaction.user.id,
-            displayName: interaction.user.username,
-          },
+        prizePool = await prisma.$transaction(async (tx) => {
+          const game = await tx.arenaGame.findUnique({
+            where: { id: gameId },
+            include: { tributes: true },
+          });
+          if (!game || game.status !== "signup") {
+            throw new EconomyError("Signup closed while you were joining.");
+          }
+          if (game.tributes.length >= game.maxPlayers) {
+            throw new EconomyError("The arena is full.");
+          }
+          if (game.tributes.some((t) => t.userId === interaction.user.id)) {
+            throw new EconomyError("You already volunteered.");
+          }
+          await tx.arenaTribute.create({
+            data: {
+              gameId,
+              userId: interaction.user.id,
+              displayName: interaction.user.username,
+            },
+          });
+          const updated = await tx.arenaGame.update({
+            where: { id: gameId },
+            data: { prizePool: { increment: game.entryFee } },
+          });
+          return updated.prizePool;
         });
       } catch (err) {
-        if (result.entryFee > 0) {
-          await creditForced(interaction.user.id, result.entryFee, "hg_join_rollback", gameId);
+        if (preview.entryFee > 0) {
+          await creditForced(interaction.user.id, preview.entryFee, "hg_join_rollback", gameId);
         }
+        if (err instanceof EconomyError) throw err;
         throw new EconomyError("Could not join (already in or race). Try again.");
       }
 
-      // Re-check still signup after create; if started, refund and remove
       const still = await prisma.arenaGame.findUnique({ where: { id: gameId } });
-      if (!still || still.status !== "signup") {
-        await prisma.arenaTribute.deleteMany({
-          where: { gameId, userId: interaction.user.id },
-        });
-        if (result.entryFee > 0) {
-          await creditForced(interaction.user.id, result.entryFee, "hg_join_late_refund", gameId);
-        }
-        throw new EconomyError("Signup closed while you were joining.");
-      }
-
-      const prizePool = still.prizePool + result.entryFee;
-      await prisma.arenaGame.update({
-        where: { id: gameId },
-        data: { prizePool },
-      });
-
       const refreshed = await loadGame(gameId);
       await interaction.update({
         embeds: [
           signupEmbed(
             gameId,
-            `<@${still.hostId}>`,
-            still.entryFee,
+            `<@${still!.hostId}>`,
+            still!.entryFee,
             prizePool,
             refreshed!.tributes.length,
-            still.maxPlayers,
+            still!.maxPlayers,
           ),
         ],
         components: [signupRow(gameId)],
@@ -370,7 +372,7 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
           embeds: [
             successEmbed(
               "Tribute accepted",
-              `${interaction.user} enters the Inferno${result.entryFee ? ` (−${formatCoins(result.entryFee)})` : ""}.`,
+              `${interaction.user} enters the Inferno${preview.entryFee ? ` (−${formatCoins(preview.entryFee)})` : ""}.`,
             ),
           ],
           flags: MessageFlags.Ephemeral,
@@ -412,9 +414,34 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
       });
       return;
     }
-    await prisma.arenaTribute.delete({ where: { id: tribute.id } });
-    const prizePool = Math.max(0, game.prizePool - game.entryFee);
-    await prisma.arenaGame.update({ where: { id: game.id }, data: { prizePool } });
+
+    let prizePool = game.prizePool;
+    try {
+      prizePool = await prisma.$transaction(async (tx) => {
+        const deleted = await tx.arenaTribute.deleteMany({
+          where: { id: tribute.id, gameId: game.id },
+        });
+        if (deleted.count !== 1) {
+          throw new EconomyError("You are not in this round.");
+        }
+        if (game.entryFee > 0) {
+          const updated = await tx.arenaGame.updateMany({
+            where: { id: game.id, status: "signup", prizePool: { gte: game.entryFee } },
+            data: { prizePool: { decrement: game.entryFee } },
+          });
+          if (updated.count !== 1) {
+            throw new EconomyError("Could not leave (signup closed).");
+          }
+        }
+        const fresh = await tx.arenaGame.findUniqueOrThrow({ where: { id: game.id } });
+        return fresh.prizePool;
+      });
+    } catch (err) {
+      const msg = err instanceof EconomyError ? err.message : "Leave failed.";
+      await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      return;
+    }
+
     if (game.entryFee > 0) {
       await creditForced(interaction.user.id, game.entryFee, "hg_leave_refund", game.id);
     }
@@ -474,14 +501,7 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
       });
       return;
     }
-    for (const t of game.tributes) {
-      if (game.entryFee > 0) {
-        await creditForced(t.userId, game.entryFee, "hg_cancel_refund", game.id).catch((err) =>
-          console.warn("[hg] cancel refund failed", t.userId, err),
-        );
-      }
-    }
-    await prisma.arenaGame.update({ where: { id: game.id }, data: { prizePool: 0 } });
+    await refundAllTributes(game.id, "hg_cancel_refund");
     await interaction.update({
       embeds: [
         baseEmbed(theme.colors.muted)
@@ -501,11 +521,20 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
       });
       return;
     }
-    if (game.tributes.length < config.hgMinPlayers) {
+
+    const live = await loadGame(game.id);
+    if (!live || live.status !== "signup") {
+      await interaction.reply({
+        embeds: [errorEmbed("This round already started or closed.")],
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (live.tributes.length < config.hgMinPlayers) {
       await interaction.reply({
         embeds: [
           errorEmbed(
-            `Need at least **${config.hgMinPlayers}** tributes (have ${game.tributes.length}).`,
+            `Need at least **${config.hgMinPlayers}** tributes (have ${live.tributes.length}).`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -515,7 +544,7 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
 
     // Atomic claim: only one starter wins
     const claimed = await prisma.arenaGame.updateMany({
-      where: { id: game.id, status: "signup" },
+      where: { id: live.id, status: "signup" },
       data: { status: "running", phase: "bloodbath", dayNumber: 0 },
     });
     if (claimed.count !== 1) {
@@ -526,23 +555,44 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
       return;
     }
 
-    runningGames.add(game.id);
+    // Re-verify count after claim; abort if under min (late leaves)
+    const started = await loadGame(live.id);
+    if (!started || started.tributes.length < config.hgMinPlayers) {
+      await abortArenaGame(live.id, "hg_start_undermin_refund");
+      await interaction.reply({
+        embeds: [
+          errorEmbed(
+            `Need at least **${config.hgMinPlayers}** tributes to start. Round cancelled and fees refunded.`,
+          ),
+        ],
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    runningGames.add(live.id);
 
     await interaction.update({
       embeds: [
         baseEmbed(theme.colors.inferno)
           .setTitle(`${theme.emojis.fire} Inferno Games — LIVE`)
           .setDescription(
-            `**${game.tributes.length}** tributes enter the arena.\n` +
-              `Prize pool: **${formatCoins(game.prizePool)}**\n\n` +
+            `**${started.tributes.length}** tributes enter the arena.\n` +
+              `Prize pool: **${formatCoins(started.prizePool)}**\n\n` +
               `_The horns sound. Run._`,
           ),
       ],
       components: [],
     });
 
-    void runArenaSimulation(interaction, game.id);
+    void runArenaSimulation(interaction, live.id);
+    return;
   }
+
+  await interaction.reply({
+    embeds: [errorEmbed("Unknown arena action.")],
+    flags: MessageFlags.Ephemeral,
+  }).catch(() => undefined);
 }
 
 async function runArenaSimulation(interaction: ButtonInteraction, gameId: string) {
@@ -671,12 +721,6 @@ async function crownWinner(
   states: ReturnType<typeof tributesToState>,
   prizePool: number,
 ) {
-  const claimed = await prisma.arenaGame.updateMany({
-    where: { id: gameId, status: "running" },
-    data: { status: "finished", phase: "finale" },
-  });
-  if (claimed.count !== 1) return; // already finished / paid
-
   const alive = states.filter((t) => t.alive);
   const winner = alive[0];
   const killBoard = [...states]
@@ -685,31 +729,46 @@ async function crownWinner(
     .map((t, i) => `\`${i + 1}.\` **${t.displayName}** — ${t.kills} kills`)
     .join("\n");
 
-  let payoutLine = "";
-  if (winner && prizePool > 0) {
-    await ensureUser(winner.userId, winner.displayName);
-    await creditForced(winner.userId, prizePool, "hg_prize", gameId);
-    payoutLine = `Prize: **${formatCoins(prizePool)}** HellCatCoins deposited.\n\n`;
-  } else if (!winner && prizePool > 0) {
-    // Everyone died — refund entry fees equally via original tributes
-    const game = await loadGame(gameId);
-    if (game && game.entryFee > 0) {
-      for (const t of game.tributes) {
-        await creditForced(t.userId, game.entryFee, "hg_no_victor_refund", gameId).catch(
-          () => undefined,
-        );
-      }
-      payoutLine = `No victor — entry fees refunded.\n\n`;
-    }
-  }
-
-  await prisma.arenaGame.update({
-    where: { id: gameId },
+  const claimed = await prisma.arenaGame.updateMany({
+    where: { id: gameId, status: "running" },
     data: {
+      status: "finished",
+      phase: "finale",
       winnerId: winner?.userId ?? null,
       prizePool: 0,
     },
   });
+  if (claimed.count !== 1) return; // already finished / paid
+
+  let payoutLine = "";
+  try {
+    if (winner && prizePool > 0) {
+      await ensureUser(winner.userId, winner.displayName);
+      await creditForced(winner.userId, prizePool, "hg_prize", gameId);
+      payoutLine = `Prize: **${formatCoins(prizePool)}** HellCatCoins deposited.\n\n`;
+    } else if (!winner && prizePool > 0) {
+      const game = await loadGame(gameId);
+      if (game && game.entryFee > 0) {
+        for (const t of game.tributes) {
+          await creditForced(t.userId, game.entryFee, "hg_no_victor_refund", gameId).catch(
+            () => undefined,
+          );
+        }
+        payoutLine = `No victor — entry fees refunded.\n\n`;
+      }
+    }
+  } catch (err) {
+    console.warn("[hg] prize payout failed, restoring running+pool", gameId, err);
+    await prisma.arenaGame.updateMany({
+      where: { id: gameId, status: "finished" },
+      data: {
+        status: "running",
+        prizePool,
+        winnerId: null,
+      },
+    });
+    throw err;
+  }
 
   await channel.send({
     embeds: [

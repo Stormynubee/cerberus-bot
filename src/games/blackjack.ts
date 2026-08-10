@@ -7,13 +7,15 @@ import {
   MessageFlags,
 } from "discord.js";
 import { prisma } from "../db.js";
+import { withUserLock } from "../locks.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
   addToJackpot,
   applyRake,
   assertBetAmount,
   creditForced,
-  debit,
+  creditForcedUnlocked,
+  debitUnlocked,
   EconomyError,
   ensureUser,
   recordMatchResult,
@@ -90,7 +92,15 @@ async function finishBlackjack(
   if (outcome === "blackjack") {
     const gross = Math.floor(payload.bet * 2.5);
     const { net, rake } = applyRake(gross);
-    await creditForced(payload.userId, net, "bj_blackjack", sessionId);
+    try {
+      await creditForced(payload.userId, net, "bj_blackjack", sessionId);
+    } catch (err) {
+      await prisma.gameSession.updateMany({
+        where: { id: sessionId, status: "settled" },
+        data: { status: "active" },
+      });
+      throw err;
+    }
     await addToJackpot(rake);
     await recordMatchResult({
       winnerId: payload.userId,
@@ -102,7 +112,15 @@ async function finishBlackjack(
   } else if (outcome === "win") {
     const gross = payload.bet * 2;
     const { net, rake } = applyRake(gross);
-    await creditForced(payload.userId, net, "bj_win", sessionId);
+    try {
+      await creditForced(payload.userId, net, "bj_win", sessionId);
+    } catch (err) {
+      await prisma.gameSession.updateMany({
+        where: { id: sessionId, status: "settled" },
+        data: { status: "active" },
+      });
+      throw err;
+    }
     await addToJackpot(rake);
     await recordMatchResult({
       winnerId: payload.userId,
@@ -112,7 +130,15 @@ async function finishBlackjack(
     desc = `You win **${formatCoins(net)}**.`;
     color = theme.colors.success;
   } else if (outcome === "push") {
-    await creditForced(payload.userId, payload.bet, "bj_push", sessionId);
+    try {
+      await creditForced(payload.userId, payload.bet, "bj_push", sessionId);
+    } catch (err) {
+      await prisma.gameSession.updateMany({
+        where: { id: sessionId, status: "settled" },
+        data: { status: "active" },
+      });
+      throw err;
+    }
     desc = `Push — wager of **${formatCoins(payload.bet)}** returned.`;
     color = theme.colors.muted;
   } else {
@@ -159,36 +185,45 @@ export async function startBlackjack(
   assertBetAmount(amount);
   await ensureUser(interaction.user.id, interaction.user.username);
 
-  const existing = await prisma.gameSession.findFirst({
-    where: {
-      type: "blackjack",
-      status: "active",
-      playerOneId: interaction.user.id,
-    },
+  const session = await withUserLock(interaction.user.id, async () => {
+    const existing = await prisma.gameSession.findFirst({
+      where: {
+        type: "blackjack",
+        status: "active",
+        playerOneId: interaction.user.id,
+      },
+    });
+    if (existing) throw new EconomyError("Finish your current blackjack hand first.");
+
+    await debitUnlocked(interaction.user.id, amount, "bj_bet");
+
+    const deck = freshDeck();
+    const payload: BjPayload = {
+      deck,
+      player: [draw(deck), draw(deck)],
+      dealer: [draw(deck), draw(deck)],
+      bet: amount,
+      userId: interaction.user.id,
+    };
+
+    try {
+      return await prisma.gameSession.create({
+        data: {
+          type: "blackjack",
+          status: "active",
+          wager: amount,
+          playerOneId: interaction.user.id,
+          payload: JSON.stringify(payload),
+          channelId: interaction.channelId,
+        },
+      });
+    } catch (err) {
+      await creditForcedUnlocked(interaction.user.id, amount, "bj_refund_create_fail");
+      throw err;
+    }
   });
-  if (existing) throw new EconomyError("Finish your current blackjack hand first.");
 
-  await debit(interaction.user.id, amount, "bj_bet");
-
-  const deck = freshDeck();
-  const payload: BjPayload = {
-    deck,
-    player: [draw(deck), draw(deck)],
-    dealer: [draw(deck), draw(deck)],
-    bet: amount,
-    userId: interaction.user.id,
-  };
-
-  const session = await prisma.gameSession.create({
-    data: {
-      type: "blackjack",
-      status: "active",
-      wager: amount,
-      playerOneId: interaction.user.id,
-      payload: JSON.stringify(payload),
-      channelId: interaction.channelId,
-    },
-  });
+  const payload = JSON.parse(session.payload) as BjPayload;
 
   // Natural blackjack checks
   const playerBj = isBlackjack(payload.player);
@@ -245,30 +280,53 @@ export async function handleBlackjackButton(interaction: ButtonInteraction) {
   }
 
   const payload = JSON.parse(session.payload) as BjPayload;
-  // Restore Card objects (JSON is fine as plain objects)
 
   if (action === "hit") {
-    payload.player.push(draw(payload.deck));
-    const value = handValue(payload.player);
+    await withUserLock(interaction.user.id, async () => {
+      const fresh = await prisma.gameSession.findUnique({ where: { id: session.id } });
+      if (!fresh || fresh.status !== "active") {
+        throw new EconomyError("This hand is already settled.");
+      }
+      const live = JSON.parse(fresh.payload) as BjPayload;
+      live.player.push(draw(live.deck));
+      const value = handValue(live.player);
 
-    if (value > 21) {
-      await prisma.gameSession.update({
-        where: { id: session.id },
-        data: { payload: JSON.stringify(payload) },
+      if (value > 21) {
+        const cas = await prisma.gameSession.updateMany({
+          where: { id: session.id, status: "active", payload: fresh.payload },
+          data: { payload: JSON.stringify(live) },
+        });
+        if (cas.count !== 1) throw new EconomyError("Hand changed — try again.");
+        Object.assign(payload, live);
+        return "bust" as const;
+      }
+
+      const cas = await prisma.gameSession.updateMany({
+        where: { id: session.id, status: "active", payload: fresh.payload },
+        data: { payload: JSON.stringify(live) },
       });
-      await finishBlackjack(interaction, session.id, payload, "lose", "update");
-      return;
-    }
-
-    await prisma.gameSession.update({
-      where: { id: session.id },
-      data: { payload: JSON.stringify(payload) },
-    });
-
-    await interaction.update({
-      embeds: [tableEmbed(payload, true, "Blackjack vs Cerberus")],
-      components: [bjButtons(session.id)],
-    });
+      if (cas.count !== 1) throw new EconomyError("Hand changed — try again.");
+      Object.assign(payload, live);
+      return "ok" as const;
+    })
+      .then(async (hitResult) => {
+        if (hitResult === "bust") {
+          await finishBlackjack(interaction, session.id, payload, "lose", "update");
+          return;
+        }
+        await interaction.update({
+          embeds: [tableEmbed(payload, true, "Blackjack vs Cerberus")],
+          components: [bjButtons(session.id)],
+        });
+      })
+      .catch(async (err) => {
+        const msg = err instanceof EconomyError ? err.message : "Hit failed.";
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+        } else {
+          await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+        }
+      });
     return;
   }
 

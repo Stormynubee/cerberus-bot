@@ -1,3 +1,4 @@
+import { accessSync } from "node:fs";
 import {
   ActionRowBuilder,
   AttachmentBuilder,
@@ -87,17 +88,30 @@ const TABS: Record<
   },
 };
 
-function helpEmbed(tab: HelpTab): EmbedBuilder {
-  const t = TABS[tab];
-  return baseEmbed(t.color)
-    .setTitle(t.title)
-    .setDescription(t.body)
-    .setThumbnail("attachment://greekbot-avatar.png")
-    .setFooter({ text: theme.footer });
+function logoAvailable(): boolean {
+  try {
+    accessSync(AVATAR_PATH);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function logoAttachment(): AttachmentBuilder {
-  return new AttachmentBuilder(AVATAR_PATH, { name: "greekbot-avatar.png" });
+function helpEmbed(tab: HelpTab): EmbedBuilder {
+  const t = TABS[tab];
+  const embed = baseEmbed(t.color)
+    .setTitle(t.title)
+    .setDescription(t.body)
+    .setFooter({ text: theme.footer });
+  if (logoAvailable()) {
+    embed.setThumbnail("attachment://greekbot-avatar.png");
+  }
+  return embed;
+}
+
+function logoFiles(): AttachmentBuilder[] {
+  if (!logoAvailable()) return [];
+  return [new AttachmentBuilder(AVATAR_PATH, { name: "greekbot-avatar.png" })];
 }
 
 function helpRows(active: HelpTab): ActionRowBuilder<ButtonBuilder>[] {
@@ -126,7 +140,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.reply({
     embeds: [helpEmbed("home")],
     components: helpRows("home"),
-    files: [logoAttachment()],
+    files: logoFiles(),
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -144,5 +158,6 @@ export async function handleHelpButton(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [helpEmbed(tab)],
     components: helpRows(tab),
+    files: logoFiles(),
   });
 }

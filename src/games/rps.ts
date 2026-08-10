@@ -156,28 +156,37 @@ async function settleRps(
   let loserId: string | null = null;
   let resultText: string;
 
-  if (p1 === p2) {
-    await creditForced(session.playerOneId, session.wager, "rps_tie_refund", session.id);
-    await creditForced(session.playerTwoId!, session.wager, "rps_tie_refund", session.id);
-    await recordMatchResult({
-      winnerId: null,
-      loserId: null,
-      amountWon: 0,
-      tieIds: [session.playerOneId, session.playerTwoId!],
+  try {
+    if (p1 === p2) {
+      await creditForced(session.playerOneId, session.wager, "rps_tie_refund", session.id);
+      await creditForced(session.playerTwoId!, session.wager, "rps_tie_refund", session.id);
+      await recordMatchResult({
+        winnerId: null,
+        loserId: null,
+        amountWon: 0,
+        tieIds: [session.playerOneId, session.playerTwoId!],
+      });
+      resultText = `It's a tie — both threw ${LABELS[p1]}. Wagers returned.`;
+    } else if (BEATS[p1] === p2) {
+      winnerId = session.playerOneId;
+      loserId = session.playerTwoId!;
+      await creditForced(winnerId, pot, "rps_win", session.id);
+      await recordMatchResult({ winnerId, loserId, amountWon: session.wager });
+      resultText = `<@${winnerId}> wins with ${LABELS[p1]} vs ${LABELS[p2]} and takes **${formatCoins(pot)}**!`;
+    } else {
+      winnerId = session.playerTwoId!;
+      loserId = session.playerOneId;
+      await creditForced(winnerId, pot, "rps_win", session.id);
+      await recordMatchResult({ winnerId, loserId, amountWon: session.wager });
+      resultText = `<@${winnerId}> wins with ${LABELS[p2]} vs ${LABELS[p1]} and takes **${formatCoins(pot)}**!`;
+    }
+  } catch (err) {
+    console.warn("[rps] payout failed, reverting settled", sessionId, err);
+    await prisma.gameSession.updateMany({
+      where: { id: sessionId, status: "settled" },
+      data: { status: "active" },
     });
-    resultText = `It's a tie — both threw ${LABELS[p1]}. Wagers returned.`;
-  } else if (BEATS[p1] === p2) {
-    winnerId = session.playerOneId;
-    loserId = session.playerTwoId!;
-    await creditForced(winnerId, pot, "rps_win", session.id);
-    await recordMatchResult({ winnerId, loserId, amountWon: session.wager });
-    resultText = `<@${winnerId}> wins with ${LABELS[p1]} vs ${LABELS[p2]} and takes **${formatCoins(pot)}**!`;
-  } else {
-    winnerId = session.playerTwoId!;
-    loserId = session.playerOneId;
-    await creditForced(winnerId, pot, "rps_win", session.id);
-    await recordMatchResult({ winnerId, loserId, amountWon: session.wager });
-    resultText = `<@${winnerId}> wins with ${LABELS[p2]} vs ${LABELS[p1]} and takes **${formatCoins(pot)}**!`;
+    throw err;
   }
 
   await prisma.gameSession.update({
@@ -269,8 +278,12 @@ export async function handleRpsButton(interaction: ButtonInteraction) {
     try {
       await debit(session.playerTwoId, session.wager, "rps_escrow", session.id);
     } catch (err) {
-      await claimSessionStatus(session.id, "active", "cancelled");
-      await creditForced(session.playerOneId, session.wager, "rps_refund_accept_fail", session.id);
+      try {
+        await creditForced(session.playerOneId, session.wager, "rps_refund_accept_fail", session.id);
+        await claimSessionStatus(session.id, "active", "cancelled");
+      } catch (refundErr) {
+        console.warn("[rps] accept-fail refund", session.id, refundErr);
+      }
       const msg = err instanceof EconomyError ? err.message : "Could not lock wager.";
       await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
       return;
@@ -321,7 +334,7 @@ export async function handleRpsPickButton(interaction: ButtonInteraction) {
     return;
   }
 
-  // Atomic pick via conditional JSON update in a transaction to avoid last-write-wins.
+  // Compare-and-swap on payload so concurrent picks cannot overwrite each other.
   const result = await prisma.$transaction(async (tx) => {
     const fresh = await tx.gameSession.findUnique({ where: { id: sessionId } });
     if (!fresh || fresh.status !== "active") return null;
@@ -333,10 +346,11 @@ export async function handleRpsPickButton(interaction: ButtonInteraction) {
       if (payload.p2) return { error: "already" as const };
       payload.p2 = choice;
     }
-    await tx.gameSession.update({
-      where: { id: sessionId },
+    const cas = await tx.gameSession.updateMany({
+      where: { id: sessionId, status: "active", payload: fresh.payload },
       data: { payload: JSON.stringify(payload) },
     });
+    if (cas.count !== 1) return { error: "race" as const };
     return { payload };
   });
 
@@ -349,7 +363,13 @@ export async function handleRpsPickButton(interaction: ButtonInteraction) {
   }
   if ("error" in result) {
     await interaction.reply({
-      embeds: [errorEmbed("You already locked your throw.")],
+      embeds: [
+        errorEmbed(
+          result.error === "race"
+            ? "Pick collided — tap again."
+            : "You already locked your throw.",
+        ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
     return;
