@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Local default: SQLite. For production, change provider to "postgresql"
+// and set DATABASE_URL to a Postgres connection string.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id // Discord snowflake
+  username      String?
+  balance       Int       @default(1000)
+  frozen        Boolean   @default(false)
+  dailyStreak   Int       @default(0)
+  lastDailyAt   DateTime?
+  wins          Int       @default(0)
+  losses        Int       @default(0)
+  ties          Int       @default(0)
+  biggestWin    Int       @default(0)
+  currentStreak Int       @default(0)
+  bestStreak    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ledgerEntries LedgerEntry[]
+  gamesAsP1     GameSession[] @relation("PlayerOne")
+  gamesAsP2     GameSession[] @relation("PlayerTwo")
+}
+
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  delta     Int
+  balance   Int
+  reason    String
+  gameId    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([gameId])
+}
+
+model GameSession {
+  id          String   @id @default(cuid())
+  type        String // coinflip | rps | blackjack
+  status      String // pending | active | settled | cancelled | expired
+  wager       Int
+  playerOneId String
+  playerOne   User     @relation("PlayerOne", fields: [playerOneId], references: [id])
+  playerTwoId String?
+  playerTwo   User?    @relation("PlayerTwo", fields: [playerTwoId], references: [id])
+  winnerId    String?
+  payload     String   @default("{}") // JSON blob for game-specific state
+  channelId   String?
+  messageId   String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, type])
+  @@index([playerOneId, status])
+  @@index([playerTwoId, status])
+}
+
+model Jackpot {
+  id      Int @id @default(1)
+  balance Int @default(0)
+}
+
+model GuildSettings {
+  guildId          String  @id
+  bigWinChannelId  String?
+  bigWinThreshold  Int     @default(500)
+  arenaMasterRole  String? // role id that can manage Inferno Games
+}
+
+model ArenaGame {
+  id         String         @id @default(cuid())
+  guildId    String
+  channelId  String
+  messageId  String?
+  hostId     String
+  status     String         // signup | running | finished | cancelled
+  phase      String         @default("signup") // signup | bloodbath | day | night | feast | finale
+  dayNumber  Int            @default(0)
+  entryFee   Int            @default(0)
+  prizePool  Int            @default(0)
+  maxPlayers Int            @default(24)
+  winnerId   String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  tributes   ArenaTribute[]
+
+  @@index([guildId, status])
+  @@index([channelId, status])
+}
+
+model ArenaTribute {
+  id           String    @id @default(cuid())
+  gameId       String
+  game         ArenaGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId       String
+  displayName  String
+  alive        Boolean   @default(true)
+  infected     Boolean   @default(false)
+  kills        Int       @default(0)
+  weapon       String    @default("none")
+  diedDay      Int?
+  diedPhase    String?
+  deathText    String?
+  joinedAt     DateTime  @default(now())
+
+  @@unique([gameId, userId])
+  @@index([gameId, alive])
+}

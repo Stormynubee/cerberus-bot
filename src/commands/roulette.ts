@@ -1,0 +1,116 @@
+import {
+  ChatInputCommandInteraction,
+  SlashCommandBuilder,
+} from "discord.js";
+import { animateSteps } from "../services/animation.js";
+import {
+  addToJackpot,
+  applyRake,
+  assertBetAmount,
+  credit,
+  debit,
+  EconomyError,
+  ensureUser,
+  recordMatchResult,
+} from "../services/wallet.js";
+import { maybeAnnounceBigWin } from "../services/bigwin.js";
+import { formatCoins, theme } from "../theme.js";
+import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+
+function colorOf(n: number): "red" | "black" | "green" {
+  if (n === 0) return "green";
+  const reds = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+  return reds.has(n) ? "red" : "black";
+}
+
+export const data = new SlashCommandBuilder()
+  .setName("roulette")
+  .setDescription("Spin Inferno roulette")
+  .addIntegerOption((o) =>
+    o.setName("amount").setDescription("Wager").setRequired(true).setMinValue(1),
+  )
+  .addStringOption((o) =>
+    o
+      .setName("bet")
+      .setDescription("What you back")
+      .setRequired(true)
+      .addChoices(
+        { name: "Red (2x)", value: "red" },
+        { name: "Black (2x)", value: "black" },
+        { name: "Green 0 (14x)", value: "green" },
+      ),
+  );
+
+export async function execute(interaction: ChatInputCommandInteraction) {
+  const amount = interaction.options.getInteger("amount", true);
+  const bet = interaction.options.getString("bet", true) as "red" | "black" | "green";
+
+  try {
+    assertBetAmount(amount);
+    await ensureUser(interaction.user.id, interaction.user.username);
+    await debit(interaction.user.id, amount, "roulette_bet");
+
+    const result = Math.floor(Math.random() * 37);
+    const color = colorOf(result);
+
+    await interaction.reply({
+      embeds: [
+        baseEmbed(theme.colors.night)
+          .setTitle("🎡 Roulette")
+          .setDescription("The wheel blurs into fire…"),
+      ],
+    });
+    const msg = await interaction.fetchReply();
+    await animateSteps(
+      msg,
+      [
+        { embeds: [baseEmbed(theme.colors.night).setTitle("🎡 Roulette").setDescription("Spinning… 🔴⚫")] },
+        { embeds: [baseEmbed(theme.colors.night).setTitle("🎡 Roulette").setDescription("Ball bouncing…")] },
+      ],
+      500,
+    );
+
+    const won = bet === color;
+    const mult = bet === "green" ? 14 : 2;
+    if (won) {
+      const gross = amount * mult;
+      const { net, rake } = applyRake(gross);
+      await credit(interaction.user.id, net, "roulette_win");
+      await addToJackpot(rake);
+      await recordMatchResult({
+        winnerId: interaction.user.id,
+        loserId: null,
+        amountWon: net - amount,
+      });
+      await maybeAnnounceBigWin(interaction, net - amount, "roulette");
+      await msg.edit({
+        embeds: [
+          baseEmbed(theme.colors.success)
+            .setTitle(`Landed ${result} (${color})`)
+            .setDescription(`You backed **${bet}** and win **${formatCoins(net)}**.`),
+        ],
+      });
+    } else {
+      await addToJackpot(Math.floor(amount * 0.02));
+      await recordMatchResult({
+        winnerId: null,
+        loserId: interaction.user.id,
+        amountWon: 0,
+      });
+      await msg.edit({
+        embeds: [
+          baseEmbed(theme.colors.danger)
+            .setTitle(`Landed ${result} (${color})`)
+            .setDescription(`You backed **${bet}**. Lost **${formatCoins(amount)}**.`),
+        ],
+      });
+    }
+  } catch (err) {
+    const msg = err instanceof EconomyError ? err.message : "Roulette failed.";
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
+    } else {
+      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+    }
+  }
+}

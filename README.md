@@ -1,0 +1,99 @@
+# GreekBot — HellCat Games
+
+Discord bot (**GreekBot**) for the **GreekGodBerry** community. Virtual **HellCatCoins**, casino games, and **Inferno Games** (Hunger Games battle royale).
+
+HellCatCoins are **entertainment only** and have no real-world value. 18+.
+
+## Branding
+
+| File | Purpose |
+|------|---------|
+| [`assets/greekbot-avatar.png`](assets/greekbot-avatar.png) | Official logo — upload in Discord Developer Portal; also shown in `/hell` |
+| [`assets/BRANDING.md`](assets/BRANDING.md) | How to set username, icon, optional API sync |
+
+Set the bot username to **GreekBot**. Optional: `SYNC_BOT_AVATAR=1` once to push the logo via API.
+
+## Commands
+
+### Wallet
+| Command | What it does |
+|--------|----------------|
+| `/hell` | Interactive help (buttons + logo) |
+| `/balance` | Wallet |
+| `/daily` | Daily claim + streak bonus |
+| `/tip` | Send HCC |
+| `/leaderboard` | Top wallets + jackpot |
+| `/profile` | Combat stats |
+| `/jackpot` | Progressive jackpot |
+
+### PvP & table
+| `/coinflip` | HellCat spin (house or PvP) |
+| `/rps` | 1v1 Rock–Paper–Scissors |
+| `/blackjack` | Hit/Stand vs house |
+
+### Casino
+| `/slots` | 3-reel Inferno slots |
+| `/roulette` | Red / black / green |
+| `/crash` | Rocket cash-out |
+| `/highlow` | Card climb |
+
+### Inferno Games
+| `/hungergames new` | Open signup (optional entry fee → prize pool) |
+| `/hungergames status` | Alive / dead / infected |
+
+Flow: **Join** → **Start** → Bloodbath → Day/Night cycles → Feast → Finale.
+
+### Admin (Manage Server)
+| `/admin grant|revoke|freeze|audit` | Economy tools |
+| `/admin bigwin` | Big-win feed channel + threshold |
+| `/admin arenamaster` | Role that can start/cancel Inferno Games |
+
+## Quick start
+
+1. Create a Discord application + bot at https://discord.com/developers/applications  
+2. Copy env: `cp .env.example .env` and set `DISCORD_TOKEN` + `DISCORD_CLIENT_ID`  
+3. Install & run:
+
+```bash
+npm install
+npm run db:push
+npm run dev
+```
+
+Set `DISCORD_GUILD_ID` for instant slash-command sync while developing.
+
+Production: see [`DEPLOY.md`](DEPLOY.md).
+
+### Invite URL
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=2147485696&scope=bot%20applications.commands
+```
+
+## Tunables
+
+| Env | Default | Meaning |
+|-----|---------|---------|
+| `HG_EVENT_DELAY_MS` | 7500 | Delay between arena events |
+| `HG_MIN_PLAYERS` | 4 | Minimum tributes |
+| `HG_MAX_PLAYERS` | 24 | Maximum tributes |
+| `BIG_WIN_THRESHOLD` | 500 | Profit that triggers big-win posts |
+| `SYNC_BOT_AVATAR` | unset | `1` = push logo to Discord once |
+
+## Stack
+
+- Node 20+ / TypeScript / discord.js v14  
+- Prisma + SQLite (local) — switch to `postgresql` for production  
+- Optional Redis for locks  
+- Docker Compose for Postgres + Redis (+ optional bot profile)
+
+## Verify
+
+```bash
+npm run test:smoke
+npm run build
+```
+
+## License
+
+MIT

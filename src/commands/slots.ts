@@ -1,0 +1,129 @@
+import {
+  ChatInputCommandInteraction,
+  SlashCommandBuilder,
+} from "discord.js";
+import { animateSteps } from "../services/animation.js";
+import {
+  addToJackpot,
+  applyRake,
+  assertBetAmount,
+  credit,
+  debit,
+  EconomyError,
+  ensureUser,
+  getJackpot,
+  recordMatchResult,
+} from "../services/wallet.js";
+import { maybeAnnounceBigWin } from "../services/bigwin.js";
+import { formatCoins, theme } from "../theme.js";
+import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+
+const SYMBOLS = ["🏛️", "⚔️", "🐺", "🔥", "🪙", "💀", "🧿"] as const;
+const PAY: Record<string, number> = {
+  "🏛️": 12,
+  "⚔️": 8,
+  "🐺": 6,
+  "🔥": 5,
+  "🪙": 4,
+  "💀": 3,
+  "🧿": 2,
+};
+
+function spin(): [string, string, string] {
+  const pick = () => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]!;
+  return [pick(), pick(), pick()];
+}
+
+function payout(reels: [string, string, string], bet: number): number {
+  const [a, b, c] = reels;
+  if (a === b && b === c) return bet * (PAY[a] ?? 2);
+  if (a === b || b === c || a === c) return Math.floor(bet * 1.5);
+  return 0;
+}
+
+export const data = new SlashCommandBuilder()
+  .setName("slots")
+  .setDescription("Spin the Inferno slots for HellCatCoins")
+  .addIntegerOption((o) =>
+    o.setName("amount").setDescription("Wager").setRequired(true).setMinValue(1),
+  );
+
+export async function execute(interaction: ChatInputCommandInteraction) {
+  const amount = interaction.options.getInteger("amount", true);
+  try {
+    assertBetAmount(amount);
+    await ensureUser(interaction.user.id, interaction.user.username);
+    await debit(interaction.user.id, amount, "slots_bet");
+
+    const reels = spin();
+    await interaction.reply({
+      embeds: [
+        baseEmbed(theme.colors.night)
+          .setTitle(`${theme.emojis.spin} Inferno Slots`)
+          .setDescription("🎰 | ❓ | ❓ | ❓ |"),
+      ],
+    });
+    const msg = await interaction.fetchReply();
+    await animateSteps(
+      msg,
+      [
+        { embeds: [baseEmbed(theme.colors.night).setTitle("Inferno Slots").setDescription(`🎰 | ${reels[0]} | ❓ | ❓ |`)] },
+        { embeds: [baseEmbed(theme.colors.night).setTitle("Inferno Slots").setDescription(`🎰 | ${reels[0]} | ${reels[1]} | ❓ |`)] },
+        {
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("Inferno Slots")
+              .setDescription(`🎰 | ${reels[0]} | ${reels[1]} | ${reels[2]} |`),
+          ],
+        },
+      ],
+      450,
+    );
+
+    const win = payout(reels, amount);
+    if (win > 0) {
+      const { net, rake } = applyRake(win);
+      await credit(interaction.user.id, net, "slots_win");
+      await addToJackpot(rake);
+      await recordMatchResult({
+        winnerId: interaction.user.id,
+        loserId: null,
+        amountWon: net - amount,
+      });
+      await maybeAnnounceBigWin(interaction, net - amount, "slots");
+      await msg.edit({
+        embeds: [
+          baseEmbed(theme.colors.success)
+            .setTitle(`${theme.emojis.fire} Jackpot line!`)
+            .setDescription(
+              `🎰 | ${reels.join(" | ")} |\nYou win **${formatCoins(net)}** (rake ${formatCoins(rake)}).`,
+            ),
+        ],
+      });
+    } else {
+      await addToJackpot(Math.floor(amount * 0.03));
+      const pot = await getJackpot();
+      await recordMatchResult({
+        winnerId: null,
+        loserId: interaction.user.id,
+        amountWon: 0,
+      });
+      await msg.edit({
+        embeds: [
+          baseEmbed(theme.colors.danger)
+            .setTitle("House keeps the ash")
+            .setDescription(
+              `🎰 | ${reels.join(" | ")} |\nYou lose **${formatCoins(amount)}**.\nJackpot: **${formatCoins(pot)}**`,
+            ),
+        ],
+      });
+    }
+  } catch (err) {
+    const msg = err instanceof EconomyError ? err.message : "Slots failed.";
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
+    } else {
+      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+    }
+  }
+}

@@ -1,0 +1,52 @@
+# Optional production-style stack (requires Docker).
+# SQLite works without this. For production Postgres:
+#   1) Set prisma/schema.prisma provider to "postgresql"
+#   2) Set DATABASE_URL + REDIS_URL in .env
+#   3) docker compose up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cerberus
+      POSTGRES_PASSWORD: cerberus
+      POSTGRES_DB: cerberus
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerberus -d cerberus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bot:
+    build: .
+    profiles: ["bot"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cerberus:cerberus@postgres:5432/cerberus?schema=public
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    volumes:
+      - botdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  botdata:
