@@ -2,8 +2,9 @@
 
 | Asset | Path | Use |
 |-------|------|-----|
-| Bot avatar / logo | `assets/greekbot-avatar.png` | Fun Discord-style 8-bit HellCats + **GreekBot** wordmark (primary) |
-| Alt avatar | `assets/greekbot-avatar-alt.png` | Goofy triple-cat pixel badge variant |
+| Bot avatar / logo | `assets/greekbot-avatar.png` | Cute-aggressive HellCat Cerberus + **GreekBot** (primary Discord icon) |
+| Source (serious) | `assets/greekbot-avatar-source.png` | Original epic mark used as remix reference |
+| Alt avatar | `assets/greekbot-avatar-alt.png` | Fun 8-bit Discord blurple variant |
 
 ## Discord Developer Portal copy
 
