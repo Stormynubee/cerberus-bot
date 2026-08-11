@@ -356,18 +356,17 @@ export async function handleCoinflipButton(interaction: ButtonInteraction) {
       );
 
     const resultPayload = { embeds: [resultEmbed], components: [] };
+    // After interaction.update(spinning), edit the webhook reply — Message#edit on
+    // slash/button replies often fails with Missing Access and left duels stuck mid-air.
     try {
-      const channel = interaction.channel;
-      if (channel?.isTextBased() && session.messageId) {
-        const duelMessage = await channel.messages.fetch(session.messageId).catch(() => null);
-        if (duelMessage) {
-          await duelMessage.edit(resultPayload);
-          return;
-        }
-      }
       await interaction.editReply(resultPayload);
     } catch (err) {
-      console.warn("[coinflip] result UI update failed", session.id, err);
+      console.warn("[coinflip] result editReply failed", session.id, err);
+      try {
+        await interaction.followUp(resultPayload);
+      } catch (followErr) {
+        console.warn("[coinflip] result followUp failed", session.id, followErr);
+      }
     }
   }
 }
