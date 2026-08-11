@@ -150,6 +150,7 @@ export function createClient(commands: Collection<string, BotCommand>) {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    const started = Date.now();
     try {
       if (interaction.isChatInputCommand()) {
         const command = commands.get(interaction.commandName);
@@ -161,12 +162,26 @@ export function createClient(commands: Collection<string, BotCommand>) {
             interaction.commandName === "help" ||
             interaction.commandName === "hell" ||
             interaction.commandName === "admin";
-          await interaction.deferReply(
-            ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
-          );
+          try {
+            await interaction.deferReply(
+              ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+            );
+          } catch (deferErr) {
+            console.error(
+              `[greekbot] defer failed /${interaction.commandName} after ${Date.now() - started}ms`,
+              deferErr,
+            );
+            return;
+          }
         }
 
-        await command.execute(interaction as never);
+        try {
+          await command.execute(interaction as never);
+        } catch (cmdErr) {
+          console.error(`[greekbot] /${interaction.commandName} failed`, cmdErr);
+          const embed = errorEmbed("Something went wrong. Try again in a moment.");
+          await interaction.editReply({ embeds: [embed] }).catch(() => undefined);
+        }
         return;
       }
 
@@ -206,7 +221,7 @@ export function createClient(commands: Collection<string, BotCommand>) {
         }
       }
     } catch (err) {
-      console.error("[interaction]", err);
+      console.error(`[interaction] after ${Date.now() - started}ms`, err);
       const embed = errorEmbed("Something went wrong in the Inferno. Try again.");
       if (interaction.isRepliable()) {
         if (interaction.replied || interaction.deferred) {
@@ -217,6 +232,13 @@ export function createClient(commands: Collection<string, BotCommand>) {
       }
     }
   });
+
+  client.on(Events.Error, (err) => console.error("[greekbot] client error", err));
+  client.on(Events.ShardDisconnect, (event) => {
+    console.warn("[greekbot] shard disconnect", event.code, event.reason);
+  });
+  client.on(Events.ShardReconnecting, () => console.warn("[greekbot] shard reconnecting…"));
+  client.on(Events.ShardResume, () => console.log("[greekbot] shard resumed"));
 
   return client;
 }

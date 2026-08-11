@@ -1,5 +1,11 @@
 import http from "node:http";
 
+let discordReady = false;
+
+export function setDiscordReady(ready: boolean): void {
+  discordReady = ready;
+}
+
 /** Render web services require binding to PORT; Discord bots do not otherwise serve HTTP. */
 export function startHealthServer(): void {
   const port = Number(process.env.PORT);
@@ -7,14 +13,15 @@ export function startHealthServer(): void {
 
   const server = http.createServer((req, res) => {
     if (req.url === "/health" || req.url === "/") {
+      const body = {
+        ok: true,
+        service: "greekbot",
+        uptime: Math.floor(process.uptime()),
+        discordReady,
+      };
+      // Always 200 so Render keep-alives succeed; discordReady shows gateway state.
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          ok: true,
-          service: "greekbot",
-          uptime: Math.floor(process.uptime()),
-        }),
-      );
+      res.end(JSON.stringify(body));
       return;
     }
     res.writeHead(404).end();
@@ -26,8 +33,9 @@ export function startHealthServer(): void {
 }
 
 /**
- * Ping ourselves so Render Free does not spin down after 15m idle.
- * Without this, Discord slash commands hit a dead process → "application did not respond".
+ * Ping ourselves so Render Free does not spin down after ~15m idle.
+ * Self-ping only works while the process is already awake — pair with an
+ * external cron hitting https://greekbot.onrender.com/health every few minutes.
  */
 export function startKeepAlive(): void {
   const base =
@@ -48,8 +56,8 @@ export function startKeepAlive(): void {
       .catch((err) => console.warn("[greekbot] Keep-alive failed", (err as Error).message));
   };
 
-  // First ping after boot, then every 4 minutes (under Render's ~15m idle spin-down).
-  setTimeout(tick, 15_000).unref();
-  setInterval(tick, 4 * 60 * 1000).unref();
-  console.log(`[greekbot] Keep-alive → ${url}`);
+  // Every 2 minutes — well under Render Free's ~15m idle spin-down.
+  setTimeout(tick, 10_000).unref();
+  setInterval(tick, 2 * 60 * 1000).unref();
+  console.log(`[greekbot] Keep-alive → ${url} (every 2m)`);
 }

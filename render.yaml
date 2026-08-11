@@ -1,4 +1,6 @@
-# GreekBot on Render — 24/7 Discord bot (Starter plan, no spin-down).
+# GreekBot on Render — Discord bot.
+# IMPORTANT for paid/client work: use plan "starter" (or higher), NOT free.
+# Free spins down after ~15m idle → Discord "application did not respond".
 # Neon Postgres is external; set DATABASE_URL + DIRECT_URL in the Render dashboard.
 services:
   - type: web
@@ -23,6 +25,8 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
+      - key: KEEP_ALIVE_URL
+        value: https://greekbot.onrender.com
       - key: STARTING_BALANCE
         value: "1000"
       - key: DAILY_REWARD
@@ -41,3 +45,7 @@ services:
         value: "24"
       - key: BIG_WIN_THRESHOLD
         value: "500"
+
+  # Optional: external keep-alive cron (needs billing on Render).
+  # Prefer upgrading the web service to Starter — Free will still cold-start.
+  # Or use https://cron-job.org → GET https://greekbot.onrender.com/health every 5m.
