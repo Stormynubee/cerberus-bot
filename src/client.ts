@@ -22,6 +22,7 @@ import { handleCoinflipButton } from "./games/coinflip.js";
 import { handleRpsButton, handleRpsPickButton } from "./games/rps.js";
 import { handleHungerButton } from "./hungergames/runner.js";
 import { connectRedis, disconnectRedis } from "./locks.js";
+import { bootstrapGuildAccess } from "./services/dbBootstrap.js";
 import { maybeSyncBotAvatar, startPresenceRotation } from "./services/branding.js";
 import { sweepExpiredChallenges } from "./services/expiry.js";
 import { errorEmbed } from "./utils/embeds.js";
@@ -82,6 +83,9 @@ export function createClient(commands: Collection<string, BotCommand>) {
     console.log(`[greekbot] Online as ${c.user.tag}`);
     startPresenceRotation(c);
     void maybeSyncBotAvatar(c);
+    void bootstrapGuildAccess().catch((err) =>
+      console.warn("[greekbot] Guild access bootstrap failed", err),
+    );
 
     const sweep = () => {
       sweepExpiredChallenges()

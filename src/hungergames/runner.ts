@@ -194,6 +194,11 @@ function memberHasRole(
 async function canConfigureArena(
   interaction: ButtonInteraction | ChatInputCommandInteraction,
 ): Promise<boolean> {
+  // Open Inferno Games hosting to every guild member (@everyone) when enabled.
+  if (config.publicArenaHost && interaction.guildId) {
+    return true;
+  }
+
   if (
     interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) ||
     interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
@@ -201,6 +206,12 @@ async function canConfigureArena(
   ) {
     return true;
   }
+
+  // Verified members role (and configured Arena Master role).
+  if (config.verifiedRoleId && memberHasRole(interaction, config.verifiedRoleId)) {
+    return true;
+  }
+
   if (!interaction.guildId) return false;
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId: interaction.guildId },

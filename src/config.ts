@@ -40,4 +40,15 @@ export const config = {
   /** Seconds dead tributes have to buy a revive after each casualty report. */
   hgReviveWindowMs: intEnv("HG_REVIVE_WINDOW_MS", 20_000),
   bigWinThreshold: intEnv("BIG_WIN_THRESHOLD", 500),
+  /**
+   * Verified members role — can host Inferno Games / use arena tools.
+   * Also treated as the default Arena Master role for the configured guild.
+   */
+  verifiedRoleId:
+    process.env.VERIFIED_ROLE_ID?.trim() || "1500433834456645725",
+  /**
+   * When true, any guild member can open/start/setup Inferno Games (not just mods).
+   * Public casino commands already use default_member_permissions=null.
+   */
+  publicArenaHost: (process.env.PUBLIC_ARENA_HOST ?? "true").toLowerCase() !== "false",
 };

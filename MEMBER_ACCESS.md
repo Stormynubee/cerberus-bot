@@ -1,60 +1,57 @@
 # Make GreekBot usable for everyone (not just admins)
 
-If members say they “can’t use” commands, Discord server permissions are usually blocking them — not the bot code.
+Public commands are registered with **no permission lock** (`default_member_permissions = null`).
+`/admin` stays **Manage Server** only.
 
-## 1. Integrations (most common fix)
+This server’s **Verified** role id: `1500433834456645725`  
+(set as Arena Master on boot so verified members can host Inferno Games)
 
-1. Open the server → **Server Settings** → **Integrations** → **GreekBot**
-2. Under **Commands**, click **Roles & Members**
-3. Ensure **@everyone** (or your member role) can use commands
-4. Turn **off** any lock that only allows Administrator / Manage Server for the whole bot
-5. `/admin` should stay limited to people with **Manage Server** — that’s intentional
+Inferno Games hosting is also open to **@everyone** in bot code (`PUBLIC_ARENA_HOST=true`).
 
-If commands were customized before, click **Clear overrides** / reset command permissions so defaults apply again.
+## 1. Integrations (required if Discord still says “no permission”)
+
+Discord stores role overrides separately from bot code. Clear them:
+
+1. Server Settings → **Integrations** → **GreekBot**
+2. Under **Commands** → **Roles & Members**
+3. Enable **@everyone**
+4. Enable role **Verified** (`1500433834456645725`) if listed
+5. Turn **off** any “Administrators only” / Manage Server lock on the whole bot
+6. If stuck: **Clear overrides** / reset command permissions, then wait ~1 minute
+
+Bots cannot rewrite those Integrations toggles with a normal bot token — an admin must open them once in the Discord UI.
 
 ## 2. Channel permissions
 
-In every channel where people play (`#commands`, casino, etc.):
+In every play channel:
 
-Allow **@everyone** (or Members):
+**@everyone** (and/or Verified):
 
-- **View Channel**
-- **Send Messages**
-- **Embed Links**
-- **Attach Files** (for `/help` GIFs)
+- View Channel, Send Messages, Embed Links, Attach Files
 - **Use Application Commands** ← critical
-- **Add Reactions** (optional)
-- **Read Message History**
+- Read Message History
 
-Allow the **GreekBot** role:
+**GreekBot** role: View, Send, Embed Links, Attach Files, Use External Emojis, Read History
 
-- View Channel, Send Messages, Embed Links, Attach Files, Use External Emojis, Mention Everyone (optional for PvP pings), Read Message History
+## 3. What members can use
 
-## 3. Bot role height
+| Everyone / Verified | Manage Server only |
+|---------------------|--------------------|
+| `/help` `/hell` `/daily` `/balance` `/tip` | `/admin …` |
+| `/leaderboard` `/jackpot` `/profile` | |
+| `/slots` `/roulette` `/crash` `/highlow` | |
+| `/coinflip` `/blackjack` `/rps` | |
+| `/hungergames new` `/setup` `/status` | |
+| Join / Leave / Revive / Start / Cancel Inferno | |
 
-Drag the **GreekBot** role **above** the roles of people it needs to ping (not above your Owner role). It does not need Administrator.
+## 4. After deploy
 
-## 4. After a deploy
+1. Wait for Render redeploy
+2. Restart Discord (`Ctrl+R`) or wait ~1 minute
+3. Type `/` — pick commands from the menu (don’t type them as plain chat)
 
-Slash commands re-register on bot boot. Members may need to:
+## Quick test (as a Verified member, not admin)
 
-- Restart Discord (`Ctrl+R`) or wait ~1 minute
-- Type `/` again to refresh the list
-
-## What normal members can use
-
-| Allowed for everyone | Owner / Manage Server only |
-|----------------------|----------------------------|
-| `/help` `/hell` | `/admin grant` |
-| `/daily` `/balance` `/tip` | `/admin revoke` |
-| `/leaderboard` `/jackpot` `/profile` | `/admin freeze` |
-| `/slots` `/roulette` `/crash` `/highlow` | `/admin audit` |
-| `/coinflip` `/blackjack` `/rps` | `/admin bigwin` |
-| `/hungergames new` `/hungergames status` | `/admin arenamaster` |
-| Join / Leave Inferno Games buttons | Start / Cancel Inferno (host, mods, or Arena Master role) |
-
-## Quick test
-
-1. Log in as a normal member (no admin)
-2. Run `/daily` then `/slots amount:10`
-3. If that fails with “You don’t have permission”, fix steps 1–2 above
+1. `/daily`
+2. `/hungergames setup` (should show defaults)
+3. `/slots amount:10`
