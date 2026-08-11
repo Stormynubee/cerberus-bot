@@ -1,3 +1,3 @@
-﻿-- AlterTable
+-- AlterTable
 ALTER TABLE "GuildSettings" ADD COLUMN IF NOT EXISTS "hgDefaultEntryFee" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "GuildSettings" ADD COLUMN IF NOT EXISTS "hgDefaultMaxPlayers" INTEGER NOT NULL DEFAULT 24;
