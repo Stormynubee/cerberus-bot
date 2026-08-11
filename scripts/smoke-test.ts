@@ -22,6 +22,7 @@ import {
   freshDeck,
   handValue,
   hiLoRankValue,
+  hiLoWinMultiplier,
   isBlackjack,
 } from "../src/games/cards.js";
 import { flipCoin, randomInt, shuffle } from "../src/utils/random.js";
@@ -80,6 +81,24 @@ async function main() {
     assert(hiLoRankValue({ rank: "K", suit: "♠" }) === 13, "king hi-lo");
     assert(handValue([{ rank: "A", suit: "♠" }, { rank: "K", suit: "♥" }]) === 21, "BJ 21");
     assert(isBlackjack([{ rank: "A", suit: "♠" }, { rank: "K", suit: "♥" }]), "isBlackjack");
+  });
+
+  await test("highlow: multiplier tracks true odds (no flat +EV farm)", () => {
+    const ace = { rank: "A" as const, suit: "♠" as const };
+    const rest = freshDeck().filter((c) => !(c.rank === "A" && c.suit === "♠"));
+    assert(rest.length === 51, "51 left");
+    const highMult = hiLoWinMultiplier(rest, ace, "high");
+    // 51/48*0.97 ≈ 1.03 — not the old flat 1.45 farm
+    assert(highMult >= 1.01 && highMult <= 1.1, `ace-high mult too juicy: ${highMult}`);
+    const lowMult = hiLoWinMultiplier(rest, ace, "low");
+    assert(lowMult === 1, `ace-low should be impossible: ${lowMult}`);
+
+    const seven = { rank: "7" as const, suit: "♥" as const };
+    const rest7 = freshDeck().filter((c) => !(c.rank === "7" && c.suit === "♥"));
+    const midHigh = hiLoWinMultiplier(rest7, seven, "high");
+    const midLow = hiLoWinMultiplier(rest7, seven, "low");
+    assert(midHigh > 1.5 && midHigh < 3, `7-high: ${midHigh}`);
+    assert(midLow > 1.5 && midLow < 3, `7-low: ${midLow}`);
   });
 
   await test("RNG: fair coin and roulette range", () => {

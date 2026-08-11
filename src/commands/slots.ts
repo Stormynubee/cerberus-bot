@@ -28,13 +28,13 @@ import { randomChoice } from "../utils/random.js";
 
 const SYMBOLS = ["🏛️", "⚔️", "🐺", "🔥", "🪙", "💀", "🧿"] as const;
 const PAY: Record<string, number> = {
-  "🏛️": 12,
-  "⚔️": 8,
-  "🐺": 6,
-  "🔥": 5,
-  "🪙": 4,
-  "💀": 3,
-  "🧿": 2,
+  "🏛️": 20,
+  "⚔️": 14,
+  "🐺": 10,
+  "🔥": 8,
+  "🪙": 6,
+  "💀": 4,
+  "🧿": 3,
 };
 
 function spin(): [string, string, string] {
@@ -44,7 +44,8 @@ function spin(): [string, string, string] {
 function payout(reels: [string, string, string], bet: number): number {
   const [a, b, c] = reels;
   if (a === b && b === c) return bet * (PAY[a] ?? 2);
-  if (a === b || b === c || a === c) return Math.floor(bet * 1.5);
+  // Any two matching symbols (including non-adjacent)
+  if (a === b || b === c || a === c) return bet * 2;
   return 0;
 }
 

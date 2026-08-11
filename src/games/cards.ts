@@ -97,6 +97,35 @@ export function hiLoRankValue(card: Card): number {
   return Number(card.rank);
 }
 
+export function countHiLoFavor(
+  deck: readonly Card[],
+  current: Card,
+  pick: "high" | "low",
+): number {
+  const cur = hiLoRankValue(current);
+  let n = 0;
+  for (const c of deck) {
+    const v = hiLoRankValue(c);
+    if (pick === "high" ? v > cur : v < cur) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Pot multiplier for a correct High-Low guess.
+ * True odds from the remaining deck, times 0.97 house edge — counting cannot create +EV.
+ */
+export function hiLoWinMultiplier(
+  deckBeforeDraw: readonly Card[],
+  current: Card,
+  pick: "high" | "low",
+): number {
+  const favor = countHiLoFavor(deckBeforeDraw, current, pick);
+  if (favor <= 0) return 1;
+  const raw = (deckBeforeDraw.length / favor) * 0.97;
+  return Math.min(13, Math.max(1.01, Math.floor(raw * 100) / 100));
+}
+
 export function isBlackjack(cards: Card[]): boolean {
   return cards.length === 2 && handValue(cards) === 21;
 }

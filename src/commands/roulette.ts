@@ -45,7 +45,7 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "Red (2x)", value: "red" },
         { name: "Black (2x)", value: "black" },
-        { name: "Green 0 (14x)", value: "green" },
+        { name: "Green 0 (36x)", value: "green" },
       ),
   );
 
@@ -110,7 +110,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const won = bet === color;
-    const mult = bet === "green" ? 14 : 2;
+    const mult = bet === "green" ? 36 : 2;
     if (won) {
       const gross = amount * mult;
       const { net, rake } = applyRake(gross);

@@ -12,10 +12,12 @@ import { withUserLock } from "../locks.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
   Card,
+  countHiLoFavor,
   draw,
   formatCard,
   freshDeck,
   hiLoRankValue,
+  hiLoWinMultiplier,
 } from "../games/cards.js";
 import {
   addToJackpot,
@@ -48,12 +50,43 @@ export const data = new SlashCommandBuilder()
     o.setName("amount").setDescription("Starting wager").setRequired(true).setMinValue(1),
   );
 
-function row(id: string) {
+function row(id: string, canHigh: boolean, canLow: boolean) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`hl:high:${id}`).setLabel("Higher").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`hl:low:${id}`).setLabel("Lower").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`hl:high:${id}`)
+      .setLabel("Higher")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canHigh),
+    new ButtonBuilder()
+      .setCustomId(`hl:low:${id}`)
+      .setLabel("Lower")
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(!canLow),
     new ButtonBuilder().setCustomId(`hl:cash:${id}`).setLabel("Cash Out").setStyle(ButtonStyle.Primary),
   );
+}
+
+function climbEmbed(payload: HiLoPayload, title: string, extra?: string) {
+  const highMult = hiLoWinMultiplier(payload.deck, payload.current, "high");
+  const lowMult = hiLoWinMultiplier(payload.deck, payload.current, "low");
+  const canHigh = countHiLoFavor(payload.deck, payload.current, "high") > 0;
+  const canLow = countHiLoFavor(payload.deck, payload.current, "low") > 0;
+  const odds = [
+    canHigh ? `Higher **${highMult.toFixed(2)}x**` : "Higher —",
+    canLow ? `Lower **${lowMult.toFixed(2)}x**` : "Lower —",
+  ].join(" · ");
+  return {
+    embed: baseEmbed(theme.colors.inferno)
+      .setTitle(title)
+      .setDescription(
+        `Card: ${formatCard(payload.current)} (rank ${hiLoRankValue(payload.current)})\n` +
+          `Pot: **${formatCoins(payload.pot)}** · Streak: **${payload.streak}**\n` +
+          `Pays: ${odds}` +
+          (extra ? `\n${extra}` : ""),
+      ),
+    canHigh,
+    canLow,
+  };
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -103,17 +136,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
 
     const payload = JSON.parse(session.payload) as HiLoPayload;
+    const view = climbEmbed(payload, "🃏 High-Low", "Will the next card be higher or lower?");
     await interaction.editReply({
-      embeds: [
-        baseEmbed(theme.colors.inferno)
-          .setTitle("🃏 High-Low")
-          .setDescription(
-            `Card: ${formatCard(payload.current)} (rank ${hiLoRankValue(payload.current)})\n` +
-              `Pot: **${formatCoins(amount)}** · Streak: **0**\n` +
-              `Will the next card be higher or lower?`,
-          ),
-      ],
-      components: [row(session.id)],
+      embeds: [view.embed],
+      components: [row(session.id, view.canHigh, view.canLow)],
     });
     const msg = await interaction.fetchReply();
     await prisma.gameSession.update({
@@ -196,11 +222,18 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
       throw new EconomyError("Run expired.");
     }
     const payload = JSON.parse(fresh.payload) as HiLoPayload;
+    const pick = action === "high" ? "high" : action === "low" ? "low" : null;
+    if (!pick) throw new EconomyError("Unknown action.");
+
+    const favor = countHiLoFavor(payload.deck, payload.current, pick);
+    if (favor <= 0) throw new EconomyError("No cards left that way — cash out or pick the other side.");
+
+    const mult = hiLoWinMultiplier(payload.deck, payload.current, pick);
+    const prevCard = payload.current;
     const next = draw(payload.deck);
-    const curVal = hiLoRankValue(payload.current);
+    const curVal = hiLoRankValue(prevCard);
     const nextVal = hiLoRankValue(next);
-    const correct =
-      action === "high" ? nextVal > curVal : action === "low" ? nextVal < curVal : false;
+    const correct = pick === "high" ? nextVal > curVal : nextVal < curVal;
     const tie = nextVal === curVal;
 
     if (tie) {
@@ -213,15 +246,14 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
         },
       });
       if (cas.count !== 1) throw new EconomyError("Run changed — try again.");
+      const view = climbEmbed(
+        payload,
+        "Push — same value",
+        `${formatCard(prevCard)} → ${formatCard(next)}\nPot still **${formatCoins(payload.pot)}**. Go again.`,
+      );
       await interaction.update({
-        embeds: [
-          baseEmbed(theme.colors.muted)
-            .setTitle("Push — same value")
-            .setDescription(
-              `${formatCard(payload.current)} → ${formatCard(next)}\nPot still **${formatCoins(payload.pot)}**. Go again.`,
-            ),
-        ],
-        components: [row(session.id)],
+        embeds: [view.embed.setColor(theme.colors.muted)],
+        components: [row(session.id, view.canHigh, view.canLow)],
       });
       return;
     }
@@ -240,7 +272,7 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
           baseEmbed(theme.colors.danger)
             .setTitle("Climb broken")
             .setDescription(
-              `${formatCard(payload.current)} → ${formatCard(next)}\nYou lose the pot of **${formatCoins(payload.pot)}**.`,
+              `${formatCard(prevCard)} → ${formatCard(next)}\nYou lose the pot of **${formatCoins(payload.pot)}**.`,
             ),
         ],
         components: [],
@@ -249,7 +281,7 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
     }
 
     payload.streak += 1;
-    payload.pot = Math.floor(payload.pot * 1.45);
+    payload.pot = Math.floor(payload.pot * mult);
     payload.current = next;
     const cas = await prisma.gameSession.updateMany({
       where: { id: session.id, status: "active", payload: fresh.payload },
@@ -259,15 +291,14 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
       },
     });
     if (cas.count !== 1) throw new EconomyError("Run changed — try again.");
+    const view = climbEmbed(
+      payload,
+      `Climb ${payload.streak}!`,
+      `${formatCard(next)} — correct (**${mult.toFixed(2)}x**)\nHigher, lower, or cash out?`,
+    );
     await interaction.update({
-      embeds: [
-        baseEmbed(theme.colors.success)
-          .setTitle(`Climb ${payload.streak}!`)
-          .setDescription(
-            `${formatCard(next)} — correct!\nPot: **${formatCoins(payload.pot)}**\nHigher, lower, or cash out?`,
-          ),
-      ],
-      components: [row(session.id)],
+      embeds: [view.embed.setColor(theme.colors.success)],
+      components: [row(session.id, view.canHigh, view.canLow)],
     });
   }).catch(async (err) => {
     const msg = err instanceof EconomyError ? err.message : "High-Low failed.";
