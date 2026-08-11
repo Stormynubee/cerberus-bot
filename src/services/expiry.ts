@@ -118,14 +118,12 @@ export async function sweepExpiredChallenges(): Promise<number> {
     if (await refundActiveEscrow(session, "bj_refund_abandoned", false)) refunded += 1;
   }
 
+  // Crash: only expiresAt — updatedAt is not touched during the climb loop.
   const stuckCrash = await prisma.gameSession.findMany({
     where: {
       status: "active",
       type: "crash",
-      OR: [
-        { expiresAt: { lt: now } },
-        { updatedAt: { lt: new Date(now.getTime() - 10 * 60 * 1000) } },
-      ],
+      expiresAt: { lt: now },
     },
   });
   for (const session of stuckCrash) {
@@ -145,6 +143,20 @@ export async function sweepExpiredChallenges(): Promise<number> {
   });
   for (const session of stuckHl) {
     if (await refundActiveEscrow(session, "highlow_refund_abandoned", false)) refunded += 1;
+  }
+
+  // House PvE spins (slots / roulette / coinflip vs house) — refund if process died mid-spin
+  const stuckHouse = await prisma.gameSession.findMany({
+    where: {
+      status: "active",
+      type: { in: ["slots", "roulette", "coinflip_house"] },
+      expiresAt: { lt: now },
+    },
+  });
+  for (const session of stuckHouse) {
+    if (await refundActiveEscrow(session, `${session.type}_refund_abandoned`, false)) {
+      refunded += 1;
+    }
   }
 
   return refunded;

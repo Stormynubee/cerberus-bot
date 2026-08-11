@@ -13,6 +13,12 @@ import { withUserLock } from "../locks.js";
 import { animateInteraction } from "../services/animation.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
+  abortHouseSpin,
+  openHouseSpin,
+  revertHouseSpinSettle,
+  settleHouseSpin,
+} from "../services/houseSession.js";
+import {
   addToJackpot,
   applyRake,
   assertBetAmount,
@@ -54,72 +60,105 @@ export async function playCoinflipVsHouse(
     );
   await interaction.editReply({ embeds: [spinning] });
 
+  let sessionId: string | null = null;
+  let outcomeSettled = false;
+
   try {
     await ensureUser(interaction.user.id, interaction.user.username);
-    await debit(interaction.user.id, amount, "coinflip_bet");
-  } catch (err) {
-    const msg = err instanceof EconomyError ? err.message : "Could not place wager.";
-    await interaction.editReply({ embeds: [errorEmbed(msg)] });
-    return;
-  }
+    const session = await openHouseSpin({
+      type: "coinflip_house",
+      userId: interaction.user.id,
+      amount,
+      channelId: interaction.channelId,
+      debitReason: "coinflip_bet",
+    });
+    sessionId = session.id;
 
-  const result = flipCoin();
-  const won = result === choice;
+    const result = flipCoin();
+    const won = result === choice;
 
-  await animateInteraction(
-    interaction,
-    spinFrames(choice)
-      .slice(1)
-      .map((text) => ({
+    await animateInteraction(
+      interaction,
+      spinFrames(choice)
+        .slice(1)
+        .map((text) => ({
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle(`${theme.emojis.spin} HellCat Spin`)
+              .setDescription(text)
+              .addFields(
+                { name: "Wager", value: formatCoins(amount), inline: true },
+                { name: "Your call", value: choice.toUpperCase(), inline: true },
+              ),
+          ],
+        })),
+      500,
+    );
+
+    const claimed = await settleHouseSpin(session.id);
+    if (!claimed) {
+      outcomeSettled = true;
+      await interaction.editReply({
+        embeds: [errorEmbed("Spin interrupted — your stake was refunded.")],
+      });
+      return;
+    }
+
+    if (won) {
+      const gross = amount * 2;
+      const { net, rake } = applyRake(gross);
+      try {
+        await creditForced(interaction.user.id, net, "coinflip_win", session.id);
+      } catch (err) {
+        await revertHouseSpinSettle(session.id);
+        throw err;
+      }
+      await addToJackpot(rake);
+      outcomeSettled = true;
+      await recordMatchResult({
+        winnerId: interaction.user.id,
+        loserId: null,
+        amountWon: Math.max(0, net - amount),
+      });
+
+      await interaction.editReply({
         embeds: [
-          baseEmbed(theme.colors.night)
-            .setTitle(`${theme.emojis.spin} HellCat Spin`)
-            .setDescription(text)
-            .addFields(
-              { name: "Wager", value: formatCoins(amount), inline: true },
-              { name: "Your call", value: choice.toUpperCase(), inline: true },
+          baseEmbed(theme.colors.success)
+            .setTitle(`${theme.emojis.fire} ${result.toUpperCase()} — You win!`)
+            .setDescription(
+              `The coin lands **${result}**. GreekBot pays **${formatCoins(net)}** (rake ${formatCoins(rake)} → jackpot).`,
             ),
         ],
-      })),
-    500,
-  );
-
-  if (won) {
-    const gross = amount * 2;
-    const { net, rake } = applyRake(gross);
-    await creditForced(interaction.user.id, net, "coinflip_win");
-    await addToJackpot(rake);
-    await recordMatchResult({
-      winnerId: interaction.user.id,
-      loserId: null,
-      amountWon: Math.max(0, net - amount),
-    });
-
-    await interaction.editReply({
-      embeds: [
-        baseEmbed(theme.colors.success)
-          .setTitle(`${theme.emojis.fire} ${result.toUpperCase()} — You win!`)
-          .setDescription(
-            `The coin lands **${result}**. GreekBot pays **${formatCoins(net)}** (rake ${formatCoins(rake)} → jackpot).`,
-          ),
-      ],
-    });
-  } else {
-    await addToJackpot(Math.floor(amount * 0.02));
-    await recordMatchResult({
-      winnerId: null,
-      loserId: interaction.user.id,
-      amountWon: 0,
-    });
-    await interaction.editReply({
-      embeds: [
-        baseEmbed(theme.colors.danger)
-          .setTitle(`${theme.emojis.skull} ${result.toUpperCase()} — Burned`)
-          .setDescription(
-            `The coin lands **${result}**. You lose **${formatCoins(amount)}**.`,
-          ),
-      ],
-    });
+      });
+    } else {
+      await addToJackpot(Math.floor(amount * 0.02));
+      outcomeSettled = true;
+      await recordMatchResult({
+        winnerId: null,
+        loserId: interaction.user.id,
+        amountWon: 0,
+      });
+      await interaction.editReply({
+        embeds: [
+          baseEmbed(theme.colors.danger)
+            .setTitle(`${theme.emojis.skull} ${result.toUpperCase()} — Burned`)
+            .setDescription(
+              `The coin lands **${result}**. You lose **${formatCoins(amount)}**.`,
+            ),
+        ],
+      });
+    }
+  } catch (err) {
+    if (sessionId && !outcomeSettled) {
+      await abortHouseSpin(
+        sessionId,
+        interaction.user.id,
+        amount,
+        "coinflip_refund_error",
+      ).catch((e) => console.warn("[coinflip] house refund failed", e));
+    }
+    const msg = err instanceof EconomyError ? err.message : "Coinflip failed.";
+    await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }
 

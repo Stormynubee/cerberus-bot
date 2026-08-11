@@ -5,11 +5,16 @@ import {
 } from "discord.js";
 import { animateInteraction } from "../services/animation.js";
 import {
+  abortHouseSpin,
+  openHouseSpin,
+  revertHouseSpinSettle,
+  settleHouseSpin,
+} from "../services/houseSession.js";
+import {
   addToJackpot,
   applyRake,
   assertBetAmount,
   creditForced,
-  debit,
   EconomyError,
   ensureUser,
   recordMatchResult,
@@ -47,8 +52,8 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("amount", true);
   const bet = interaction.options.getString("bet", true) as "red" | "black" | "green";
-  let debited = false;
-  let settled = false;
+  let sessionId: string | null = null;
+  let outcomeSettled = false;
 
   try {
     assertBetAmount(amount);
@@ -62,8 +67,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
 
     await ensureUser(interaction.user.id, interaction.user.username);
-    await debit(interaction.user.id, amount, "roulette_bet");
-    debited = true;
+    const session = await openHouseSpin({
+      type: "roulette",
+      userId: interaction.user.id,
+      amount,
+      channelId: interaction.channelId,
+      debitReason: "roulette_bet",
+    });
+    sessionId = session.id;
 
     const result = randomInt(37);
     const color = colorOf(result);
@@ -89,14 +100,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       450,
     );
 
+    const claimed = await settleHouseSpin(session.id);
+    if (!claimed) {
+      outcomeSettled = true;
+      await interaction.editReply({
+        embeds: [errorEmbed("Spin interrupted — your stake was refunded.")],
+      });
+      return;
+    }
+
     const won = bet === color;
     const mult = bet === "green" ? 14 : 2;
     if (won) {
       const gross = amount * mult;
       const { net, rake } = applyRake(gross);
-      await creditForced(interaction.user.id, net, "roulette_win");
+      try {
+        await creditForced(interaction.user.id, net, "roulette_win", session.id);
+      } catch (err) {
+        await revertHouseSpinSettle(session.id);
+        throw err;
+      }
       await addToJackpot(rake);
-      settled = true;
+      outcomeSettled = true;
       await recordMatchResult({
         winnerId: interaction.user.id,
         loserId: null,
@@ -112,7 +137,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     } else {
       await addToJackpot(Math.floor(amount * 0.02));
-      settled = true;
+      outcomeSettled = true;
       await recordMatchResult({
         winnerId: null,
         loserId: interaction.user.id,
@@ -128,10 +153,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
   } catch (err) {
     console.error("[roulette]", err);
-    if (debited && !settled) {
-      await creditForced(interaction.user.id, amount, "roulette_refund_error").catch((e) =>
-        console.warn("[roulette] refund failed", e),
-      );
+    if (sessionId && !outcomeSettled) {
+      await abortHouseSpin(
+        sessionId,
+        interaction.user.id,
+        amount,
+        "roulette_refund_error",
+      ).catch((e) => console.warn("[roulette] refund failed", e));
     }
     const text =
       err instanceof EconomyError

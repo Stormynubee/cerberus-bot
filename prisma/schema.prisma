@@ -50,7 +50,7 @@ model LedgerEntry {
 
 model GameSession {
   id          String    @id @default(cuid())
-  type        String // coinflip | rps | blackjack | crash | highlow
+  type        String // coinflip | coinflip_house | rps | blackjack | crash | highlow | slots | roulette
   status      String // pending | active | settled | cancelled | expired
   wager       Int
   playerOneId String

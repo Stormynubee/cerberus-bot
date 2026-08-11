@@ -27,6 +27,12 @@ import { baseEmbed, errorEmbed } from "../utils/embeds.js";
 import { ackCommand } from "../utils/interaction.js";
 import { randomFloat } from "../utils/random.js";
 
+const TICK_MS = 700;
+const MULT_STEP = 0.15;
+/** Cap so round length (and expiresAt) stay bounded. */
+const CRASH_CAP = 100;
+const EXPIRY_GRACE_MS = 90_000;
+
 type CrashRound = {
   sessionId: string;
   userId: string;
@@ -42,7 +48,14 @@ const rounds = new Map<string, CrashRound>();
 function crashPoint(): number {
   const r = randomFloat();
   if (r < 0.03) return 1.0;
-  return Math.max(1.0, Math.floor((0.99 / (1 - r)) * 100) / 100);
+  const raw = Math.max(1.0, Math.floor((0.99 / (1 - r)) * 100) / 100);
+  return Math.min(CRASH_CAP, raw);
+}
+
+/** Wall-clock budget for the climb loop + grace so expiry cannot refund mid-flight. */
+export function crashExpiresAt(crashAt: number, fromMs = Date.now()): Date {
+  const steps = crashAt <= 1 ? 0 : Math.ceil((crashAt - 1) / MULT_STEP);
+  return new Date(fromMs + steps * TICK_MS + EXPIRY_GRACE_MS);
 }
 
 /** Returns true if this caller owns the end of the round. */
@@ -94,7 +107,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             playerOneId: interaction.user.id,
             payload: JSON.stringify({ crashAt }),
             channelId: interaction.channelId,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+            expiresAt: crashExpiresAt(crashAt),
           },
         });
       } catch (err) {
@@ -142,10 +155,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     let mult = 1.0;
     while (mult < crashAt) {
-      await sleep(700);
+      await sleep(TICK_MS);
       const round = rounds.get(roundId);
       if (!round || round.ended) return;
-      mult = Math.round((mult + 0.15) * 100) / 100;
+      mult = Math.round((mult + MULT_STEP) * 100) / 100;
       if (mult >= crashAt) break;
       round.multiplier = mult;
       await interaction
@@ -167,7 +180,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const settled = await claimSessionStatus(session.id, "active", "settled");
     if (!settled) {
-      round.ended = false;
+      // Expiry or cashout already owns this session — do not revive the round.
+      rounds.delete(roundId);
       return;
     }
     rounds.delete(roundId);
@@ -204,8 +218,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 export async function handleCrashButton(interaction: ButtonInteraction) {
   const [, , roundId] = interaction.customId.split(":");
   if (!roundId) return;
-  const round = rounds.get(roundId);
-  if (!round || round.ended) {
+
+  let round = rounds.get(roundId);
+  if (!round) {
+    await refundOrphanCrash(interaction, roundId);
+    return;
+  }
+  if (round.ended) {
     await interaction.reply({
       embeds: [errorEmbed("This rocket already finished.")],
       flags: MessageFlags.Ephemeral,
@@ -230,7 +249,7 @@ export async function handleCrashButton(interaction: ButtonInteraction) {
 
   const settled = await claimSessionStatus(round.sessionId, "active", "settled");
   if (!settled) {
-    round.ended = false;
+    rounds.delete(roundId);
     await interaction.reply({
       embeds: [errorEmbed("This rocket already finished.")],
       flags: MessageFlags.Ephemeral,
@@ -272,4 +291,63 @@ export async function handleCrashButton(interaction: ButtonInteraction) {
     rounds.set(roundId, round);
     throw err;
   }
+}
+
+/**
+ * After a process restart the in-memory round is gone. Do not invent a multiplier —
+ * refund the escrowed stake if the DB session is still active.
+ */
+async function refundOrphanCrash(interaction: ButtonInteraction, roundId: string) {
+  const session = await prisma.gameSession.findUnique({ where: { id: roundId } });
+  if (!session || session.type !== "crash") {
+    await interaction.reply({
+      embeds: [errorEmbed("This rocket already finished.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (interaction.user.id !== session.playerOneId) {
+    await interaction.reply({
+      embeds: [errorEmbed("Not your rocket.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (session.status !== "active") {
+    await interaction.reply({
+      embeds: [errorEmbed("This rocket already finished.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const claimed = await claimSessionStatus(session.id, "active", "expired");
+  if (!claimed) {
+    await interaction.reply({
+      embeds: [errorEmbed("This rocket already finished.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    await creditForced(session.playerOneId, session.wager, "crash_refund_interrupted", session.id);
+  } catch (err) {
+    await prisma.gameSession.updateMany({
+      where: { id: session.id, status: "expired" },
+      data: { status: "active" },
+    });
+    throw err;
+  }
+
+  await interaction.update({
+    embeds: [
+      baseEmbed(theme.colors.gold)
+        .setTitle("Rocket interrupted")
+        .setDescription(
+          `The round was lost after a restart.\nStake refunded: **${formatCoins(session.wager)}**.`,
+        ),
+    ],
+    components: [],
+  });
 }

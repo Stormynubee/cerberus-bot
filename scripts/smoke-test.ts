@@ -25,6 +25,7 @@ import {
   isBlackjack,
 } from "../src/games/cards.js";
 import { flipCoin, randomInt, shuffle } from "../src/utils/random.js";
+import { crashExpiresAt } from "../src/commands/crash.js";
 import {
   applyEvent,
   nextPhase,
@@ -98,6 +99,18 @@ async function main() {
     shuffle(deck);
     const reshuffled = deck.slice(0, 13).map((c) => `${c.rank}${c.suit}`).join(",");
     assert(first !== reshuffled || deck.length === 52, "shuffle should mix deck");
+  });
+
+  await test("crash expiresAt covers climb duration", () => {
+    const from = 1_700_000_000_000;
+    const instant = crashExpiresAt(1, from).getTime() - from;
+    assert(instant === 90_000, `instant grace: ${instant}`);
+    // 10x → ceil(9/0.15)=60 steps * 700ms + 90s
+    const at10 = crashExpiresAt(10, from).getTime() - from;
+    assert(at10 === 60 * 700 + 90_000, `10x ttl: ${at10}`);
+    const at100 = crashExpiresAt(100, from).getTime() - from;
+    assert(at100 === Math.ceil(99 / 0.15) * 700 + 90_000, `100x ttl: ${at100}`);
+    assert(at100 > 5 * 60 * 1000, "100x must outlive old hard-coded 5m expiry");
   });
 
   await test("event catalog non-empty + template fill", () => {
