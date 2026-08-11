@@ -3,6 +3,7 @@
 | Asset | Path | Use |
 |-------|------|-----|
 | Bot avatar / logo | `assets/greekbot-avatar.png` | Cute-aggressive HellCat Cerberus + **GreekBot** (primary Discord icon) |
+| Bot banner | `assets/greekbot-banner.png` | Discord Developer Portal → Bot → **Banner** (680×240) |
 | Source (serious) | `assets/greekbot-avatar-source.png` | Original epic mark used as remix reference |
 | Alt avatar | `assets/greekbot-avatar-alt.png` | Fun 8-bit Discord blurple variant |
 
@@ -43,7 +44,8 @@ Casino · PvP · Inferno Games · HellCatCoins — /help to start
 
 1. https://discord.com/developers/applications → your app → **Bot**
 2. Upload `assets/greekbot-avatar.png` as the icon
-3. Username: **GreekBot**
+3. Upload `assets/greekbot-banner.png` as the banner (680×240)
+4. Username: **GreekBot**
 4. Paste the short description into the bot About Me / description field
 5. Add tags on the application Information page
 6. Optional once: `SYNC_BOT_AVATAR=1` in `.env`, start bot, then remove it

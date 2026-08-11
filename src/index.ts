@@ -1,10 +1,17 @@
 import "dotenv/config";
 import { createClient, loadCommands, registerCommands, shutdown } from "./client.js";
 import { recoverStuckArenas } from "./hungergames/runner.js";
+import { startHealthServer } from "./health.js";
 import { connectRedis } from "./locks.js";
+import { bootstrapDatabase, verifyDatabaseConnection } from "./services/dbBootstrap.js";
 import { sweepExpiredChallenges } from "./services/expiry.js";
 
 async function main() {
+  startHealthServer();
+
+  await verifyDatabaseConnection();  console.log("[greekbot] Database connected");
+  await bootstrapDatabase();
+
   await connectRedis();
 
   const recovered = await recoverStuckArenas();

@@ -24,4 +24,4 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/assets ./assets
 RUN mkdir -p /app/data && chown -R greekbot:greekbot /app
 USER greekbot
-CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

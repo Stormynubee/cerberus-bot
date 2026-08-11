@@ -1,0 +1,43 @@
+# GreekBot on Render — 24/7 Discord bot (Starter plan, no spin-down).
+# Neon Postgres is external; set DATABASE_URL + DIRECT_URL in the Render dashboard.
+services:
+  - type: web
+    name: greekbot
+    runtime: node
+    region: ohio
+    plan: starter
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: STARTING_BALANCE
+        value: "1000"
+      - key: DAILY_REWARD
+        value: "250"
+      - key: MIN_BET
+        value: "10"
+      - key: MAX_BET
+        value: "25000"
+      - key: CHALLENGE_TTL_SECONDS
+        value: "60"
+      - key: HG_EVENT_DELAY_MS
+        value: "7500"
+      - key: HG_MIN_PLAYERS
+        value: "4"
+      - key: HG_MAX_PLAYERS
+        value: "24"
+      - key: BIG_WIN_THRESHOLD
+        value: "500"

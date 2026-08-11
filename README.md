@@ -51,12 +51,12 @@ Flow: **Join** → **Start** → Bloodbath → Day/Night cycles → Feast → Fi
 ## Quick start
 
 1. Create a Discord application + bot at https://discord.com/developers/applications  
-2. Copy env: `cp .env.example .env` and set `DISCORD_TOKEN` + `DISCORD_CLIENT_ID`  
+2. Copy env: `cp .env.example .env` — set `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and Neon `DATABASE_URL` / `DIRECT_URL` (see [`NEON.md`](NEON.md))  
 3. Install & run:
 
 ```bash
 npm install
-npm run db:push
+npm run db:migrate:deploy
 npm run dev
 ```
 
@@ -83,9 +83,9 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=21
 ## Stack
 
 - Node 20+ / TypeScript / discord.js v14  
-- Prisma + SQLite (local) — switch to `postgresql` for production  
-- Optional Redis for locks  
-- Docker Compose for Postgres + Redis (+ optional bot profile)
+- Prisma + **Neon Postgres** (all wallets, games, Inferno Games)  
+- Optional Redis for multi-instance locks  
+- Docker Compose optional for local Postgres + Redis
 
 ## Verify
 

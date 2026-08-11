@@ -2,11 +2,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Local default: SQLite. For production, change provider to "postgresql"
-// and set DATABASE_URL to a Postgres connection string.
+// Production: Neon Postgres — use direct DATABASE_URL + DIRECT_URL (see DEPLOY.md, NEON.md).
+// Pooled (-pooler) URLs break Prisma interactive transactions used by wallet/arena.
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -28,12 +29,14 @@ model User {
   ledgerEntries LedgerEntry[]
   gamesAsP1     GameSession[] @relation("PlayerOne")
   gamesAsP2     GameSession[] @relation("PlayerTwo")
+
+  @@index([balance])
 }
 
 model LedgerEntry {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   delta     Int
   balance   Int
   reason    String
@@ -42,28 +45,31 @@ model LedgerEntry {
 
   @@index([userId, createdAt])
   @@index([gameId])
+  @@index([reason])
 }
 
 model GameSession {
-  id          String   @id @default(cuid())
-  type        String // coinflip | rps | blackjack
+  id          String    @id @default(cuid())
+  type        String // coinflip | rps | blackjack | crash | highlow
   status      String // pending | active | settled | cancelled | expired
   wager       Int
   playerOneId String
-  playerOne   User     @relation("PlayerOne", fields: [playerOneId], references: [id])
+  playerOne   User      @relation("PlayerOne", fields: [playerOneId], references: [id], onDelete: Cascade)
   playerTwoId String?
-  playerTwo   User?    @relation("PlayerTwo", fields: [playerTwoId], references: [id])
+  playerTwo   User?     @relation("PlayerTwo", fields: [playerTwoId], references: [id], onDelete: SetNull)
   winnerId    String?
-  payload     String   @default("{}") // JSON blob for game-specific state
+  payload     String    @default("{}") // JSON blob for game-specific state
   channelId   String?
   messageId   String?
   expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([status, type])
+  @@index([status, expiresAt])
   @@index([playerOneId, status])
   @@index([playerTwoId, status])
+  @@index([type, updatedAt])
 }
 
 model Jackpot {
@@ -72,10 +78,10 @@ model Jackpot {
 }
 
 model GuildSettings {
-  guildId          String  @id
-  bigWinChannelId  String?
-  bigWinThreshold  Int     @default(500)
-  arenaMasterRole  String? // role id that can manage Inferno Games
+  guildId         String @id
+  bigWinChannelId String?
+  bigWinThreshold Int    @default(500)
+  arenaMasterRole String?
 }
 
 model ArenaGame {
@@ -84,8 +90,8 @@ model ArenaGame {
   channelId  String
   messageId  String?
   hostId     String
-  status     String         // signup | running | finished | cancelled
-  phase      String         @default("signup") // signup | bloodbath | day | night | feast | finale
+  status     String // signup | running | finished | cancelled
+  phase      String         @default("signup")
   dayNumber  Int            @default(0)
   entryFee   Int            @default(0)
   prizePool  Int            @default(0)
@@ -97,23 +103,25 @@ model ArenaGame {
 
   @@index([guildId, status])
   @@index([channelId, status])
+  @@index([status, updatedAt])
 }
 
 model ArenaTribute {
-  id           String    @id @default(cuid())
-  gameId       String
-  game         ArenaGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  userId       String
-  displayName  String
-  alive        Boolean   @default(true)
-  infected     Boolean   @default(false)
-  kills        Int       @default(0)
-  weapon       String    @default("none")
-  diedDay      Int?
-  diedPhase    String?
-  deathText    String?
-  joinedAt     DateTime  @default(now())
+  id          String    @id @default(cuid())
+  gameId      String
+  game        ArenaGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId      String
+  displayName String
+  alive       Boolean   @default(true)
+  infected    Boolean   @default(false)
+  kills       Int       @default(0)
+  weapon      String    @default("none")
+  diedDay     Int?
+  diedPhase   String?
+  deathText   String?
+  joinedAt    DateTime  @default(now())
 
   @@unique([gameId, userId])
   @@index([gameId, alive])
+  @@index([userId])
 }
