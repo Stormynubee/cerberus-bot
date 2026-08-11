@@ -6,10 +6,7 @@ import {
 import { theme, formatCoins } from "../theme.js";
 
 export function baseEmbed(color: ColorResolvable = theme.colors.inferno): EmbedBuilder {
-  return new EmbedBuilder()
-    .setColor(color)
-    .setFooter({ text: theme.footer })
-    .setTimestamp();
+  return new EmbedBuilder().setColor(color).setTimestamp();
 }
 
 export function walletEmbed(

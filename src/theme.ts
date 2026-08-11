@@ -11,8 +11,6 @@ export const theme = {
     muted: 0x44403c,
     night: 0x1c1917,
   },
-  footer:
-    "18+ · Entertainment only · HellCatCoins have no real-world value · Play responsibly",
   emojis: {
     coin: "🪙",
     fire: "🔥",

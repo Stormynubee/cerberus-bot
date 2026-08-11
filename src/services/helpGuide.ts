@@ -145,8 +145,7 @@ export function helpEmbed(tab: HelpTab): EmbedBuilder {
   const steps = t.steps.map((s, i) => `**${i + 1}.** ${s}`).join("\n");
   const embed = baseEmbed(t.color)
     .setTitle(t.title)
-    .setDescription(`${t.body}\n\n### How to play\n${steps}\n\n**Try next:** ${t.tryNext}`)
-    .setFooter({ text: theme.footer });
+    .setDescription(`${t.body}\n\n### How to play\n${steps}\n\n**Try next:** ${t.tryNext}`);
 
   if (logoAvailable()) {
     embed.setThumbnail("attachment://greekbot-avatar.png");

@@ -83,7 +83,7 @@ function signupEmbed(
         `Prize pool: **${formatCoins(prizePool)}**\n` +
         `Tributes: **${count}/${max}** (min ${config.hgMinPlayers})`,
     )
-    .setFooter({ text: `${theme.footer} · Game ${gameId.slice(0, 8)}` });
+    .setFooter({ text: `Game ${gameId.slice(0, 8)}` });
 }
 
 function signupRow(gameId: string) {
