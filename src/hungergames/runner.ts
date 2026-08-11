@@ -112,6 +112,29 @@ function signupRow(gameId: string) {
   );
 }
 
+function replaceHgRow(gameId: string, entryFee: number, maxPlayers: number) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`hg:replace:${gameId}:${entryFee}:${maxPlayers}`)
+      .setLabel("Close previous & open new")
+      .setStyle(ButtonStyle.Danger),
+  );
+}
+
+async function replyOrEdit(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  payload: {
+    content?: string;
+    embeds: EmbedBuilder[];
+    components?: ActionRowBuilder<ButtonBuilder>[];
+  },
+) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload);
+  }
+  return interaction.reply(payload);
+}
+
 function summaryEmbed(
   title: string,
   died: { displayName: string; text: string }[],
@@ -204,12 +227,37 @@ export async function createInfernoGames(
   if (entryFee < 0) throw new EconomyError("Entry fee cannot be negative.");
   assertFee(entryFee);
 
-  // Serialize create: reject if any signup/running already exists (check inside transaction).
   const existing = await prisma.arenaGame.findFirst({
     where: { guildId: interaction.guildId, status: { in: ["signup", "running"] } },
   });
   if (existing) {
-    throw new EconomyError("An Inferno Games round is already open in this server.");
+    const canClose = await canManage(interaction, existing.hostId);
+    await replyOrEdit(interaction, {
+      embeds: [
+        baseEmbed(theme.colors.muted)
+          .setTitle(`${theme.emojis.fire} Inferno Games already open`)
+          .setDescription(
+            `A round is already **${existing.status}** (host <@${existing.hostId}>).\n` +
+              (canClose
+                ? `Close it to open a new signup (entry **${entryFee > 0 ? formatCoins(entryFee) : "FREE"}**, max **${max}**).`
+                : "Ask the host or a moderator to cancel it first."),
+          ),
+      ],
+      components: canClose ? [replaceHgRow(existing.id, entryFee, max)] : [],
+    });
+    return;
+  }
+
+  await openInfernoSignup(interaction, entryFee, max);
+}
+
+async function openInfernoSignup(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  entryFee: number,
+  maxPlayers: number,
+) {
+  if (!interaction.guildId || !interaction.channel) {
+    throw new EconomyError("Inferno Games can only run inside a server channel.");
   }
 
   const game = await prisma.arenaGame.create({
@@ -221,7 +269,7 @@ export async function createInfernoGames(
       phase: "signup",
       entryFee,
       prizePool: 0,
-      maxPlayers: max,
+      maxPlayers,
     },
   });
 
@@ -238,11 +286,10 @@ export async function createInfernoGames(
     throw new EconomyError("An Inferno Games round is already open in this server.");
   }
 
-  await interaction.reply({
-    embeds: [signupEmbed(game.id, interaction.user.toString(), entryFee, 0, 0, max)],
+  const msg = await replyOrEdit(interaction, {
+    embeds: [signupEmbed(game.id, interaction.user.toString(), entryFee, 0, 0, maxPlayers)],
     components: [signupRow(game.id)],
   });
-  const msg = await interaction.fetchReply();
   await prisma.arenaGame.update({
     where: { id: game.id },
     data: { messageId: msg.id },
@@ -290,8 +337,74 @@ export async function recoverStuckArenas(): Promise<number> {
 }
 
 export async function handleHungerButton(interaction: ButtonInteraction) {
-  const [, action, gameId] = interaction.customId.split(":");
+  const parts = interaction.customId.split(":");
+  const action = parts[1];
+  const gameId = parts[2];
   if (!action || !gameId) return;
+
+  if (action === "replace") {
+    const entryFee = Number(parts[3] ?? 0);
+    const maxPlayers = Number(parts[4] ?? config.hgMaxPlayers);
+    try {
+      const existing = await loadGame(gameId);
+      if (!existing || !["signup", "running"].includes(existing.status)) {
+        await interaction.update({
+          embeds: [
+            baseEmbed(theme.colors.muted)
+              .setTitle("Previous round already closed")
+              .setDescription("Opening a fresh Inferno Games…"),
+          ],
+          components: [],
+        });
+      } else {
+        if (!(await canManage(interaction, existing.hostId))) {
+          await interaction.reply({
+            embeds: [errorEmbed("Only the host or a moderator can close this round.")],
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await abortArenaGame(gameId, "hg_replace_refund");
+        // Soft-update the old public signup message if we can
+        if (existing.messageId && existing.channelId) {
+          const ch = await interaction.client.channels.fetch(existing.channelId).catch(() => null);
+          if (ch && ch.isTextBased() && "messages" in ch) {
+            const old = await ch.messages.fetch(existing.messageId).catch(() => null);
+            await old
+              ?.edit({
+                embeds: [
+                  baseEmbed(theme.colors.muted)
+                    .setTitle("Inferno Games closed")
+                    .setDescription("Closed to open a new round. Entry fees refunded."),
+                ],
+                components: [],
+              })
+              .catch(() => undefined);
+          }
+        }
+        await interaction.update({
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("Opening new Inferno Games…")
+              .setDescription("Previous round closed. Posting fresh signup…"),
+          ],
+          components: [],
+        });
+      }
+
+      assertFee(entryFee);
+      const max = Math.min(Math.max(maxPlayers, config.hgMinPlayers), config.hgMaxPlayers);
+      await openInfernoSignup(interaction, entryFee, max);
+    } catch (err) {
+      const msg = err instanceof EconomyError ? err.message : "Could not replace arena.";
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      }
+    }
+    return;
+  }
 
   if (action === "join") {
     await ensureUser(interaction.user.id, interaction.user.username);
@@ -792,7 +905,7 @@ async function crownWinner(
 
 export async function statusInfernoGames(interaction: ChatInputCommandInteraction) {
   if (!interaction.guildId) {
-    await interaction.reply({ embeds: [errorEmbed("Server only.")], ephemeral: true });
+    await replyOrEdit(interaction, { embeds: [errorEmbed("Server only.")] });
     return;
   }
   const game = await prisma.arenaGame.findFirst({
@@ -801,16 +914,15 @@ export async function statusInfernoGames(interaction: ChatInputCommandInteractio
     orderBy: { createdAt: "desc" },
   });
   if (!game) {
-    await interaction.reply({
+    await replyOrEdit(interaction, {
       embeds: [errorEmbed("No active Inferno Games. Use `/hungergames new`.")],
-      ephemeral: true,
     });
     return;
   }
 
   const alive = game.tributes.filter((t) => t.alive);
   const dead = game.tributes.filter((t) => !t.alive);
-  await interaction.reply({
+  await replyOrEdit(interaction, {
     embeds: [
       baseEmbed(theme.colors.inferno)
         .setTitle("Inferno Games — Status")

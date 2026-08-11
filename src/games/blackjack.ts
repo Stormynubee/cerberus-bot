@@ -196,20 +196,40 @@ async function dealerPlay(payload: BjPayload) {
   }
 }
 
-export async function startBlackjack(
-  interaction: ChatInputCommandInteraction,
+/** Cancel an open blackjack hand and refund the wager. */
+export async function cancelBlackjackSession(
+  sessionId: string,
+  userId: string,
+): Promise<{ refunded: number } | null> {
+  const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
+  if (!session || session.type !== "blackjack") return null;
+  if (session.playerOneId !== userId) return null;
+  if (session.status !== "active") return null;
+
+  const claimed = await claimSessionStatus(sessionId, "active", "cancelled");
+  if (!claimed) return null;
+
+  await creditForced(userId, session.wager, "bj_refund_close", sessionId);
+  return { refunded: session.wager };
+}
+
+function replaceBjRow(sessionId: string, amount: number) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`bj:reopen:${sessionId}:${amount}`)
+      .setLabel("Close previous & deal")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`bj:close:${sessionId}`)
+      .setLabel("Just close previous")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+async function dealBlackjackTable(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   amount: number,
 ) {
-  assertBetAmount(amount);
-
-  await interaction.editReply({
-    embeds: [
-      baseEmbed(theme.colors.night)
-        .setTitle(`${theme.emojis.cards} Dealing…`)
-        .setDescription("Cards slide across the Inferno table…"),
-    ],
-  });
-
   await ensureUser(interaction.user.id, interaction.user.username);
 
   const session = await withUserLock(interaction.user.id, async () => {
@@ -220,7 +240,9 @@ export async function startBlackjack(
         playerOneId: interaction.user.id,
       },
     });
-    if (existing) throw new EconomyError("Finish your current blackjack hand first.");
+    if (existing) {
+      throw new EconomyError("OPEN_HAND");
+    }
 
     await debitUnlocked(interaction.user.id, amount, "bj_bet");
 
@@ -251,12 +273,10 @@ export async function startBlackjack(
   });
 
   const payload = JSON.parse(session.payload) as BjPayload;
-
-  // Natural blackjack checks
   const playerBj = isBlackjack(payload.player);
   const dealerBj = isBlackjack(payload.dealer);
 
-  await sleep(700);
+  await sleep(500);
 
   if (playerBj || dealerBj) {
     let outcome: "win" | "lose" | "push" | "blackjack" = "push";
@@ -278,9 +298,110 @@ export async function startBlackjack(
   });
 }
 
+export async function startBlackjack(
+  interaction: ChatInputCommandInteraction,
+  amount: number,
+) {
+  assertBetAmount(amount);
+  await ensureUser(interaction.user.id, interaction.user.username);
+
+  const existing = await prisma.gameSession.findFirst({
+    where: {
+      type: "blackjack",
+      status: "active",
+      playerOneId: interaction.user.id,
+    },
+  });
+
+  if (existing) {
+    await interaction.editReply({
+      embeds: [
+        baseEmbed(theme.colors.muted)
+          .setTitle(`${theme.emojis.cards} Hand already open`)
+          .setDescription(
+            `You still have an unfinished blackjack for **${formatCoins(existing.wager)}**.\n` +
+              `Close it to deal a new hand for **${formatCoins(amount)}**.`,
+          ),
+      ],
+      components: [replaceBjRow(existing.id, amount)],
+    });
+    return;
+  }
+
+  await interaction.editReply({
+    embeds: [
+      baseEmbed(theme.colors.night)
+        .setTitle(`${theme.emojis.cards} Dealing…`)
+        .setDescription("Cards slide across the Inferno table…"),
+    ],
+  });
+
+  await dealBlackjackTable(interaction, amount);
+}
+
 export async function handleBlackjackButton(interaction: ButtonInteraction) {
-  const [, action, sessionId] = interaction.customId.split(":");
+  const parts = interaction.customId.split(":");
+  const action = parts[1];
+  const sessionId = parts[2];
   if (!sessionId || !action) return;
+
+  if (action === "close" || action === "reopen") {
+    const amount = action === "reopen" ? Number(parts[3]) : 0;
+    if (action === "reopen") {
+      try {
+        assertBetAmount(amount);
+      } catch (err) {
+        const msg = err instanceof EconomyError ? err.message : "Invalid wager.";
+        await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+        return;
+      }
+    }
+
+    try {
+      const result = await cancelBlackjackSession(sessionId, interaction.user.id);
+      if (!result) {
+        await interaction.reply({
+          embeds: [errorEmbed("That hand is already closed.")],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (action === "close") {
+        await interaction.update({
+          embeds: [
+            baseEmbed(theme.colors.muted)
+              .setTitle("Hand closed")
+              .setDescription(
+                `Previous wager of **${formatCoins(result.refunded)}** refunded.\nRun \`/blackjack\` when you're ready.`,
+              ),
+          ],
+          components: [],
+        });
+        return;
+      }
+
+      await interaction.update({
+        embeds: [
+          baseEmbed(theme.colors.night)
+            .setTitle(`${theme.emojis.cards} Dealing…`)
+            .setDescription(
+              `Closed previous hand (**${formatCoins(result.refunded)}** refunded).\nDealing new cards…`,
+            ),
+        ],
+        components: [],
+      });
+      await dealBlackjackTable(interaction, amount);
+    } catch (err) {
+      const msg = err instanceof EconomyError ? err.message : "Could not close hand.";
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      }
+    }
+    return;
+  }
 
   const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
   if (!session || session.type !== "blackjack" || session.status !== "active") {

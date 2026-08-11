@@ -58,6 +58,52 @@ function choiceRow(sessionId: string, prefix: string) {
   );
 }
 
+/** Cancel pending/active RPS and refund escrowed wagers. */
+export async function cancelRpsSession(
+  sessionId: string,
+  requesterId: string,
+): Promise<{ refunded: string[] } | null> {
+  const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
+  if (!session || session.type !== "rps") return null;
+  if (![session.playerOneId, session.playerTwoId].includes(requesterId)) return null;
+  if (!["pending", "active"].includes(session.status)) return null;
+
+  const from = session.status;
+  const claimed = await claimSessionStatus(sessionId, from, "cancelled");
+  if (!claimed) return null;
+
+  const refunded: string[] = [];
+  try {
+    await creditForced(session.playerOneId, session.wager, "rps_refund_close", session.id);
+    refunded.push(session.playerOneId);
+    if (from === "active" && session.playerTwoId) {
+      await creditForced(session.playerTwoId, session.wager, "rps_refund_close", session.id);
+      refunded.push(session.playerTwoId);
+    }
+  } catch (err) {
+    console.warn("[rps] close refund failed", sessionId, err);
+    await prisma.gameSession.updateMany({
+      where: { id: sessionId, status: "cancelled" },
+      data: { status: from },
+    });
+    throw err;
+  }
+  return { refunded };
+}
+
+function replaceRpsRow(sessionId: string, opponentId: string, amount: number) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`rps:reopen:${sessionId}:${opponentId}:${amount}`)
+      .setLabel("Close mine & challenge")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`rps:close:${sessionId}`)
+      .setLabel("Just close mine")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
 export async function challengeRps(
   interaction: ChatInputCommandInteraction,
   opponent: User,
@@ -71,6 +117,49 @@ export async function challengeRps(
   await ensureUser(interaction.user.id, interaction.user.username);
   await ensureUser(opponent.id, opponent.username);
 
+  const mine = await prisma.gameSession.findFirst({
+    where: {
+      type: "rps",
+      status: { in: ["pending", "active"] },
+      OR: [{ playerOneId: interaction.user.id }, { playerTwoId: interaction.user.id }],
+    },
+  });
+  if (mine) {
+    await interaction.editReply({
+      embeds: [
+        baseEmbed(theme.colors.muted)
+          .setTitle(`${theme.emojis.swords} Duel already open`)
+          .setDescription(
+            `You already have an open Rock–Paper–Scissors duel for **${formatCoins(mine.wager)}**.\n` +
+              `Close it to challenge ${opponent} for **${formatCoins(amount)}**.`,
+          ),
+      ],
+      components: [replaceRpsRow(mine.id, opponent.id, amount)],
+    });
+    return;
+  }
+
+  const theirs = await prisma.gameSession.findFirst({
+    where: {
+      type: "rps",
+      status: { in: ["pending", "active"] },
+      OR: [{ playerOneId: opponent.id }, { playerTwoId: opponent.id }],
+    },
+  });
+  if (theirs) {
+    throw new EconomyError(
+      `${opponent.username} already has an open duel. Ask them to finish or close it first.`,
+    );
+  }
+
+  await createRpsChallenge(interaction, opponent, amount);
+}
+
+async function createRpsChallenge(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  opponent: User,
+  amount: number,
+) {
   const [first, second] = [interaction.user.id, opponent.id].sort();
   const expiresAt = new Date(Date.now() + config.challengeTtlSeconds * 1000);
 
@@ -232,6 +321,56 @@ export async function handleRpsButton(interaction: ButtonInteraction) {
   const action = parts[1];
   const sessionId = parts[2];
   if (!action || !sessionId) return;
+
+  if (action === "close" || action === "reopen") {
+    const opponentId = action === "reopen" ? parts[3] : undefined;
+    const amount = action === "reopen" ? Number(parts[4]) : 0;
+
+    try {
+      const closed = await cancelRpsSession(sessionId, interaction.user.id);
+      if (!closed) {
+        await interaction.reply({
+          embeds: [errorEmbed("That duel is already closed.")],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (action === "close") {
+        await interaction.update({
+          embeds: [
+            baseEmbed(theme.colors.muted)
+              .setTitle("Duel closed")
+              .setDescription("Escrowed wagers refunded. Run `/rps` when you're ready."),
+          ],
+          components: [],
+        });
+        return;
+      }
+
+      assertBetAmount(amount);
+      if (!opponentId) throw new EconomyError("Missing opponent.");
+      const opponent = await interaction.client.users.fetch(opponentId);
+      await ensureUser(opponent.id, opponent.username);
+      await interaction.update({
+        embeds: [
+          baseEmbed(theme.colors.night)
+            .setTitle("Opening new duel…")
+            .setDescription(`Previous duel closed. Challenging ${opponent}…`),
+        ],
+        components: [],
+      });
+      await createRpsChallenge(interaction, opponent, amount);
+    } catch (err) {
+      const msg = err instanceof EconomyError ? err.message : "Could not close duel.";
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      }
+    }
+    return;
+  }
 
   const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
   if (!session || session.type !== "rps") {

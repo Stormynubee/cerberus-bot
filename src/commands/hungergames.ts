@@ -5,6 +5,7 @@ import {
 import { EconomyError } from "../services/wallet.js";
 import { config } from "../config.js";
 import { errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 import { createInfernoGames, statusInfernoGames } from "../hungergames/runner.js";
 
 export const data = new SlashCommandBuilder()
@@ -34,6 +35,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
+  await ackCommand(interaction);
   try {
     if (sub === "new") {
       const fee = interaction.options.getInteger("entry_fee") ?? 0;
@@ -46,10 +48,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Inferno Games failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
-    }
+    await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }
