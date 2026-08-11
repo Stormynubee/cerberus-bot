@@ -291,7 +291,15 @@ export async function getJackpot(): Promise<number> {
 
 export async function topBalances(limit = 10) {
   return prisma.user.findMany({
-    orderBy: { balance: "desc" },
+    where: {
+      // Hide local smoke-test ghosts from the public board
+      NOT: [
+        { username: { in: ["ClaimTest", "SmokeA", "SmokeB"] } },
+        { id: { startsWith: "smoke_" } },
+        { id: { startsWith: "claim_" } },
+      ],
+    },
+    orderBy: [{ balance: "desc" }, { username: "asc" }],
     take: limit,
   });
 }

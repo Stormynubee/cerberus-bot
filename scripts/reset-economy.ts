@@ -1,6 +1,7 @@
 /**
  * Full economy / leaderboard reset for GreekBot (Neon Postgres).
  * Keeps GuildSettings (big-win channel, arena master role).
+ * Deletes smoke/test ghost accounts so they don't clog /leaderboard.
  *
  * Run: npx tsx scripts/reset-economy.ts
  */
@@ -8,11 +9,23 @@ import "dotenv/config";
 import { prisma } from "../src/db.js";
 import { config } from "../src/config.js";
 
+const TEST_USERNAMES = ["ClaimTest", "SmokeA", "SmokeB"];
+
+function isTestUser(u: { id: string; username: string | null }): boolean {
+  if (u.username && TEST_USERNAMES.includes(u.username)) return true;
+  if (/^(smoke_|claim_)/i.test(u.id)) return true;
+  return false;
+}
+
 async function main() {
   const start = config.startingBalance;
 
+  const allUsers = await prisma.user.findMany({ select: { id: true, username: true } });
+  const testIds = allUsers.filter(isTestUser).map((u) => u.id);
+
   const before = {
-    users: await prisma.user.count(),
+    users: allUsers.length,
+    testUsers: testIds.length,
     ledger: await prisma.ledgerEntry.count(),
     sessions: await prisma.gameSession.count(),
     arenas: await prisma.arenaGame.count(),
@@ -23,11 +36,15 @@ async function main() {
   console.log("Before reset:", before);
 
   await prisma.$transaction(async (tx) => {
-    // Child tables first (tributes cascade from ArenaGame, but be explicit)
     await tx.arenaTribute.deleteMany({});
     await tx.arenaGame.deleteMany({});
     await tx.gameSession.deleteMany({});
     await tx.ledgerEntry.deleteMany({});
+
+    // Remove smoke-test ghosts (cascade cleans their ledger via schema)
+    if (testIds.length) {
+      await tx.user.deleteMany({ where: { id: { in: testIds } } });
+    }
 
     await tx.user.updateMany({
       data: {
@@ -62,21 +79,17 @@ async function main() {
     arenas: await prisma.arenaGame.count(),
     tributes: await prisma.arenaTribute.count(),
     jackpot: (await prisma.jackpot.findUnique({ where: { id: 1 } }))?.balance ?? 0,
-    sampleStats: await prisma.user.findMany({
-      take: 5,
-      select: {
-        username: true,
-        balance: true,
-        wins: true,
-        losses: true,
-        biggestWin: true,
-        dailyStreak: true,
-      },
+    leaderboardPreview: await prisma.user.findMany({
+      orderBy: [{ balance: "desc" }, { username: "asc" }],
+      take: 10,
+      select: { username: true, balance: true, wins: true },
     }),
   };
 
   console.log("After reset:", JSON.stringify(after, null, 2));
-  console.log(`\nAll wallets set to ${start} HCC. Leaderboard / stats / games wiped.`);
+  console.log(
+    `\nDeleted ${testIds.length} test account(s). Remaining wallets = ${start} HCC. Jackpot = 0.`,
+  );
 }
 
 main()

@@ -181,6 +181,8 @@ async function main() {
     const a = await claimSessionStatus(session.id, "pending", "expired");
     const b = await claimSessionStatus(session.id, "pending", "expired");
     assert(a === true && b === false, "second claim must fail");
+    await prisma.gameSession.deleteMany({ where: { playerOneId: uid } });
+    await prisma.user.delete({ where: { id: uid } }).catch(() => undefined);
   });
 
   await test("economy: ensure, debit, credit, transfer, daily", async () => {
@@ -221,6 +223,10 @@ async function main() {
 
     const rake = applyRake(100);
     assert(rake.net + rake.rake === 100, "rake splits cleanly");
+
+    // Don't leave smoke ghosts on the production leaderboard
+    await prisma.ledgerEntry.deleteMany({ where: { userId: { in: [a, b] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [a, b] } } });
   });
 
   await test("slash commands load (including hungergames)", async () => {
