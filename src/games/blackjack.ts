@@ -352,18 +352,14 @@ export async function handleBlackjackButton(interaction: ButtonInteraction) {
 
   if (action === "stand") {
     try {
-      await withUserLock(interaction.user.id, async () => {
+      // Persist dealer play under the lock, then settle AFTER release.
+      // finishBlackjack → creditForced also takes withUserLock — nesting deadlocks.
+      const settled = await withUserLock(interaction.user.id, async () => {
         const fresh = await prisma.gameSession.findUnique({ where: { id: session.id } });
         if (!fresh || fresh.status !== "active") {
           throw new EconomyError("This hand is already settled.");
         }
         const live = JSON.parse(fresh.payload) as BjPayload;
-
-        await interaction.update({
-          embeds: [tableEmbed(live, false, "Dealer reveals…")],
-          components: [bjButtons(session.id, true)],
-        });
-        await sleep(800);
         await dealerPlay(live);
 
         const cas = await prisma.gameSession.updateMany({
@@ -378,14 +374,25 @@ export async function handleBlackjackButton(interaction: ButtonInteraction) {
         if (d > 21 || p > d) outcome = "win";
         else if (p === d) outcome = "push";
 
-        await finishBlackjack(interaction, session.id, live, outcome, "edit");
+        return { live, outcome };
       });
+
+      await interaction.update({
+        embeds: [tableEmbed(settled.live, false, "Dealer reveals…")],
+        components: [],
+      });
+      await sleep(600);
+      await finishBlackjack(interaction, session.id, settled.live, settled.outcome, "edit");
     } catch (err) {
       const msg = err instanceof EconomyError ? err.message : "Stand failed.";
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+        await interaction
+          .followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral })
+          .catch(() => undefined);
       } else {
-        await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+        await interaction
+          .reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral })
+          .catch(() => undefined);
       }
     }
   }
