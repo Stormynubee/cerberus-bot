@@ -194,16 +194,37 @@ async function settleRps(
     data: { winnerId, payload: JSON.stringify({ p1, p2 }) },
   });
 
-  await interaction.message.edit({
-    embeds: [
-      baseEmbed(winnerId ? theme.colors.gold : theme.colors.muted)
-        .setTitle(`${theme.emojis.trophy} Arena Result`)
-        .setDescription(
-          `⚔️ <@${session.playerOneId}> ${LABELS[p1]}  vs  <@${session.playerTwoId}> ${LABELS[p2]}\n\n${resultText}`,
-        ),
-    ],
-    components: [],
-  });
+  const resultEmbed = baseEmbed(winnerId ? theme.colors.gold : theme.colors.muted)
+    .setTitle(`${theme.emojis.trophy} Arena Result`)
+    .setDescription(
+      `⚔️ <@${session.playerOneId}> ${LABELS[p1]}  vs  <@${session.playerTwoId}> ${LABELS[p2]}\n\n${resultText}`,
+    );
+
+  const resultPayload = { embeds: [resultEmbed], components: [] };
+
+  try {
+    // Prefer interaction.update (works on the public duel message). message.edit after
+    // an ephemeral reply can fail with Missing Access on some channels/deployments.
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.update(resultPayload);
+      return;
+    }
+
+    const channel = interaction.channel;
+    if (channel?.isTextBased() && session.messageId) {
+      const duelMessage = await channel.messages.fetch(session.messageId).catch(() => null);
+      if (duelMessage) {
+        await duelMessage.edit(resultPayload);
+        return;
+      }
+    }
+
+    if (interaction.message?.editable) {
+      await interaction.message.edit(resultPayload);
+    }
+  } catch (err) {
+    console.warn("[rps] result UI update failed", sessionId, err);
+  }
 }
 
 export async function handleRpsButton(interaction: ButtonInteraction) {
@@ -375,6 +396,21 @@ export async function handleRpsPickButton(interaction: ButtonInteraction) {
     return;
   }
 
+  if (result.payload.p1 && result.payload.p2) {
+    await settleRps(session.id, result.payload.p1, result.payload.p2, interaction);
+    const lockedEmbed = baseEmbed(theme.colors.success)
+      .setTitle("Throw locked")
+      .setDescription(`You chose **${LABELS[choice]}**. Arena resolved.`);
+    if (interaction.isRepliable()) {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ embeds: [lockedEmbed], flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ embeds: [lockedEmbed], flags: MessageFlags.Ephemeral });
+      }
+    }
+    return;
+  }
+
   await interaction.reply({
     embeds: [
       baseEmbed(theme.colors.success)
@@ -383,8 +419,4 @@ export async function handleRpsPickButton(interaction: ButtonInteraction) {
     ],
     flags: MessageFlags.Ephemeral,
   });
-
-  if (result.payload.p1 && result.payload.p2) {
-    await settleRps(session.id, result.payload.p1, result.payload.p2, interaction);
-  }
 }
