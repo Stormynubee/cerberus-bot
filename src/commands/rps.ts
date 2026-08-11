@@ -5,6 +5,7 @@ import {
 import { challengeRps } from "../games/rps.js";
 import { EconomyError } from "../services/wallet.js";
 import { errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("rps")
@@ -20,14 +21,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const opponent = interaction.options.getUser("opponent", true);
   const amount = interaction.options.getInteger("amount", true);
 
+  await ackCommand(interaction);
   try {
     await challengeRps(interaction, opponent, amount);
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Challenge failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
-    }
+    await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }

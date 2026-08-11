@@ -31,6 +31,7 @@ import {
 import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 
 type HiLoPayload = {
   bet: number;
@@ -59,6 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("amount", true);
   try {
     assertBetAmount(amount);
+    await ackCommand(interaction);
     await ensureUser(interaction.user.id, interaction.user.username);
 
     const session = await withUserLock(interaction.user.id, async () => {
@@ -101,7 +103,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
 
     const payload = JSON.parse(session.payload) as HiLoPayload;
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.inferno)
           .setTitle("🃏 High-Low")
@@ -120,8 +122,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "High-Low failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ embeds: [errorEmbed(msg)] }).catch(async () => {
+        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      });
     } else {
       await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     }

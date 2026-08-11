@@ -121,7 +121,7 @@ export async function challengeRps(
       .setStyle(ButtonStyle.Secondary),
   );
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `${opponent}`,
     embeds: [
       baseEmbed(theme.colors.inferno)

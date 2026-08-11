@@ -17,6 +17,7 @@ import {
 import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 import { randomInt } from "../utils/random.js";
 
 function colorOf(n: number): "red" | "black" | "green" {
@@ -51,9 +52,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   try {
     assertBetAmount(amount);
-    await ensureUser(interaction.user.id, interaction.user.username);
-
-    await interaction.reply({
+    await ackCommand(interaction);
+    await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.night)
           .setTitle("🎡 Roulette")
@@ -61,6 +61,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ],
     });
 
+    await ensureUser(interaction.user.id, interaction.user.username);
     await debit(interaction.user.id, amount, "roulette_bet");
     debited = true;
 
@@ -121,8 +122,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       );
     }
     const msg = err instanceof EconomyError ? err.message : "Roulette failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ embeds: [errorEmbed(msg)] }).catch(async () => {
+        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      });
     } else {
       await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     }
