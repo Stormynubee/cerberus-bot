@@ -252,8 +252,10 @@ export async function recordMatchResult(opts: {
   }
 
   if (winnerId) {
+    await ensureUser(winnerId);
     const winner = await prisma.user.findUnique({ where: { id: winnerId } });
     if (winner) {
+      const profit = Math.max(0, amountWon);
       const nextStreak = winner.currentStreak + 1;
       await prisma.user.update({
         where: { id: winnerId },
@@ -261,13 +263,14 @@ export async function recordMatchResult(opts: {
           wins: { increment: 1 },
           currentStreak: nextStreak,
           bestStreak: Math.max(winner.bestStreak, nextStreak),
-          biggestWin: Math.max(winner.biggestWin, amountWon),
+          biggestWin: Math.max(winner.biggestWin, profit),
         },
       });
     }
   }
 
   if (loserId) {
+    await ensureUser(loserId);
     await prisma.user.update({
       where: { id: loserId },
       data: { losses: { increment: 1 }, currentStreak: 0 },

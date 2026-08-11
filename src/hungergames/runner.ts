@@ -16,6 +16,7 @@ import {
   debit,
   EconomyError,
   ensureUser,
+  recordMatchResult,
 } from "../services/wallet.js";
 import { formatCoins, sleep, theme } from "../theme.js";
 import { baseEmbed, errorEmbed, successEmbed } from "../utils/embeds.js";
@@ -868,6 +869,23 @@ async function crownWinner(
           );
         }
         payoutLine = `No victor — entry fees refunded.\n\n`;
+      }
+    }
+
+    // Track Inferno Games on player profiles
+    if (winner) {
+      await recordMatchResult({
+        winnerId: winner.userId,
+        loserId: null,
+        amountWon: Math.max(0, prizePool),
+      });
+      for (const t of states) {
+        if (t.userId === winner.userId) continue;
+        await recordMatchResult({
+          winnerId: null,
+          loserId: t.userId,
+          amountWon: 0,
+        }).catch(() => undefined);
       }
     }
   } catch (err) {
