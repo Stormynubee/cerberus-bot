@@ -316,7 +316,13 @@ async function main() {
         });
       })(),
     ]);
-    assert(order.join(",") === "1,2,3", `lock order ${order.join(",")}`);
+    // Either contender may win first; mutual exclusion means 3 never sits between 1 and 2.
+    assert(order.length === 3, `expected 3 events, got ${order.join(",")}`);
+    assert(order.indexOf(1) < order.indexOf(2), "critical section must be contiguous");
+    assert(
+      !(order.indexOf(3) > order.indexOf(1) && order.indexOf(3) < order.indexOf(2)),
+      `lock interleaved: ${order.join(",")}`,
+    );
   });
 
   await test("claimSessionStatus is single-winner", async () => {
