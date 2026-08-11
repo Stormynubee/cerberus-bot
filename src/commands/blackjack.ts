@@ -9,7 +9,7 @@ import { ackCommand } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("blackjack")
-  .setDescription("Play blackjack vs Cerberus for HellCatCoins")
+  .setDescription("Play blackjack vs Cerberus — stands on all 17, no double/split")
   .addIntegerOption((o) =>
     o.setName("amount").setDescription("Wager in HCC").setRequired(true).setMinValue(1),
   );

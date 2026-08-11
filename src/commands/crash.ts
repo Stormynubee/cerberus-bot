@@ -67,7 +67,7 @@ function claimEnd(round: CrashRound): boolean {
 
 export const data = new SlashCommandBuilder()
   .setName("crash")
-  .setDescription("Inferno rocket crash — cash out before it explodes")
+  .setDescription("Inferno rocket — ~1% house edge; 3% chance of instant 1.00x bust")
   .addIntegerOption((o) =>
     o.setName("amount").setDescription("Wager").setRequired(true).setMinValue(1),
   );
@@ -132,7 +132,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           .setTitle("🚀 Inferno Rocket")
           .setDescription(
             `Wager **${formatCoins(amount)}**\nMultiplier: **1.00x**\nCash out before it burns!`,
-          ),
+          )
+          .setFooter({
+            text: "Fair crash curve · 3% instant 1.00x · ~1% edge · 2% rake on cashout",
+          }),
       ],
       components: [row],
     });

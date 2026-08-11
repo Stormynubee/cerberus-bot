@@ -9,7 +9,7 @@ import { ackCommand } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("coinflip")
-  .setDescription("HellCat coin spin — vs house or another member")
+  .setDescription("HellCat coin — fair 50/50; house takes 2% rake on wins (PvP is rake-free)")
   .addIntegerOption((o) =>
     o.setName("amount").setDescription("Wager in HCC").setRequired(true).setMinValue(1),
   )

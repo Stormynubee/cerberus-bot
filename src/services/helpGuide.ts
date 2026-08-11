@@ -69,13 +69,13 @@ export const TABS: Record<HelpTab, TabContent> = {
     color: theme.colors.danger,
     gif: "pvp.gif",
     body:
-      "Duels use **buttons**. Both players escrow coins; the loser is burned, winner takes the pot.\n" +
+      "Duels use **buttons**. Both players escrow coins; the loser is burned, winner takes the pot (**no house rake** on PvP).\n" +
       "Expired / declined challenges **auto-refund**.",
     steps: [
-      "`/coinflip amount heads|tails` — vs house, or add `@opponent`",
+      "`/coinflip amount heads|tails` — vs house (2% rake on wins), or add `@opponent` (rake-free pot)",
       "Opponent taps **Accept** / **Decline** on the challenge message",
-      "`/rps @opponent amount` — both pick Rock / Paper / Scissors privately",
-      "`/blackjack amount` — **Hit** / **Stand** vs the house",
+      "`/rps @opponent amount` — fair Rock / Paper / Scissors; both pick privately",
+      "`/blackjack amount` — **Hit** / **Stand** vs the house (stands on all 17)",
       "Only one open duel at a time per player",
     ],
     tryNext: "`/coinflip 50 heads` or challenge a friend",
@@ -85,12 +85,16 @@ export const TABS: Record<HelpTab, TabContent> = {
     title: `${theme.emojis.spin} Casino guide`,
     color: theme.colors.inferno,
     gif: "casino.gif",
-    body: "Solo games vs GreekBot. Watch the live embeds — some rounds need a **Cash Out** button.",
+    body:
+      "Solo games vs GreekBot. Watch the live embeds — some rounds need a **Cash Out** button.\n" +
+      "House games disclose their edge: typically **~2% rake on wins** (jackpot-bound).",
     steps: [
       "`/slots amount` — 3-reel Inferno spin",
-      "`/roulette amount red|black|green` — green pays big",
-      "`/crash amount` — rocket climbs; tap **Cash Out** before it blows",
-      "`/highlow amount` — Higher / Lower / Cash Out on the climb",
+      "`/roulette amount red|black|green` — green pays **36x** (European-style)",
+      "`/crash amount` — Bustabit-style curve; **3%** instant 1.00x; cash out before it blows",
+      "`/highlow amount` — Higher / Lower pays **true remaining-deck odds** (−3% edge)",
+      "`/coinflip amount heads|tails` — fair 50/50 vs house (2% rake on wins)",
+      "`/blackjack amount` — dealer stands on all 17; no double/split",
       "Big wins can post to the server feed (admins set `/admin bigwin`)",
     ],
     tryNext: "`/slots 25` or `/crash 50`",
@@ -101,16 +105,18 @@ export const TABS: Record<HelpTab, TabContent> = {
     color: theme.colors.night,
     gif: "inferno.gif",
     body:
-      "Hunger-Games style arena with **cool HellCat** chaos: wolf bites, traps, night infection, casualty reports.",
+      "Hunger-Games style **story arena**: weighted events and forced kills keep the plot moving — " +
+      "it is not a pure survival lottery. Early deaths are expected.\n" +
+      "The host **pays the base prize** when opening a round (refunded if cancelled); entry fees add to the pool.",
     steps: [
       "Mods: `/hungergames setup win_prize:250 revive_cost:50 max_revives:2`",
-      "Host: `/hungergames new` (uses server defaults)",
+      "Host: `/hungergames new` (uses server defaults — host must afford the base prize)",
       "Everyone taps **Join** on the signup message",
       "Host / Arena Master / mods tap **Start** (min players required)",
       "Dead tributes can **Revive** (default 50 HCC, max 2) between phases",
       "Phases: Bloodbath → Day/Night → Feast → Finale",
       "`/hungergames status` — alive / dead / infected mid-match",
-      "Last tribute standing wins the prize pool (default 250 HCC base)",
+      "Last tribute standing wins the prize pool",
     ],
     tryNext: "Ask a mod to open `/hungergames new`",
   },

@@ -64,7 +64,8 @@ function tableEmbed(payload: BjPayload, hideDealer: boolean, title: string) {
       `**Dealer** (${dVal})\n${formatHand(payload.dealer, hideDealer)}\n\n` +
         `**You** (${pVal})\n${formatHand(payload.player)}\n\n` +
         `Wager: **${formatCoins(payload.bet)}**`,
-    );
+    )
+    .setFooter({ text: "Dealer stands on all 17 · no double/split · 2% rake on wins" });
 }
 
 async function finishBlackjack(

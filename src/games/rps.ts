@@ -217,6 +217,7 @@ async function createRpsChallenge(
         .setTitle(`${theme.emojis.swords} Arena — Rock Paper Scissors`)
         .setDescription(
           `${interaction.user} challenges ${opponent} for **${formatCoins(amount)}**.\n` +
+            `Fair Rock / Paper / Scissors — winner takes both escrows (no house rake).\n` +
             `Expires <t:${Math.floor(expiresAt.getTime() / 1000)}:R>.`,
         ),
     ],

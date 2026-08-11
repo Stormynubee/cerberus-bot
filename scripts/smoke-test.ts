@@ -197,6 +197,26 @@ async function main() {
     }
   });
 
+  await test("postgres mutex serializes withUserLock", async () => {
+    const { withUserLock } = await import("../src/locks.js");
+    const order: number[] = [];
+    const uid = `lock-test-${Date.now()}`;
+    await Promise.all([
+      withUserLock(uid, async () => {
+        order.push(1);
+        await new Promise((r) => setTimeout(r, 80));
+        order.push(2);
+      }),
+      (async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        await withUserLock(uid, async () => {
+          order.push(3);
+        });
+      })(),
+    ]);
+    assert(order.join(",") === "1,2,3", `lock order ${order.join(",")}`);
+  });
+
   await test("claimSessionStatus is single-winner", async () => {
     const { claimSessionStatus } = await import("../src/services/expiry.js");
     const uid = `claim_p1_${Date.now()}`;

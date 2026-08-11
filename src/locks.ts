@@ -1,15 +1,15 @@
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { Redis } from "ioredis";
 import { config } from "./config.js";
+import { prisma } from "./db.js";
 
 type LockHandle = {
   release: () => Promise<void>;
 };
 
-/** In-memory mutex: waiters queue; lock is ONLY released by holder (no TTL steal). */
-const memoryOwners = new Map<string, { release: () => void; waiters: Array<() => void> }>();
-
 let redis: Redis | null = null;
-/** Once Redis is configured and connected, never fall back to memory on busy. */
+/** Once Redis is configured and connected, prefer it for locks. */
 let redisReady = false;
 
 export function getRedis(): Redis | null {
@@ -30,7 +30,7 @@ export function getRedis(): Redis | null {
 export async function connectRedis(): Promise<void> {
   const client = getRedis();
   if (!client) {
-    console.log("[locks] Using in-memory locks (REDIS_URL not set)");
+    console.log("[locks] Using Postgres mutex locks (REDIS_URL not set)");
     redisReady = false;
     return;
   }
@@ -39,48 +39,45 @@ export async function connectRedis(): Promise<void> {
     redisReady = true;
     console.log("[locks] Connected to Redis");
   } catch (err) {
-    console.warn("[locks] Redis unavailable, using in-memory locks:", err);
+    console.warn("[locks] Redis unavailable, using Postgres mutex locks:", err);
     redis = null;
     redisReady = false;
   }
 }
 
-async function acquireMemory(key: string, waitMs: number): Promise<LockHandle> {
+async function acquireDb(key: string, waitMs: number, holdMs: number): Promise<LockHandle> {
+  const token = randomUUID();
   const started = Date.now();
 
-  while (memoryOwners.has(key)) {
-    if (Date.now() - started > waitMs) {
-      throw new Error("Could not acquire lock (busy). Try again.");
-    }
-    const owner = memoryOwners.get(key)!;
-    await new Promise<void>((resolve) => {
-      owner.waiters.push(resolve);
-      // Also wake on timeout slice
-      setTimeout(resolve, Math.min(100, waitMs));
+  while (Date.now() - started < waitMs) {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + holdMs);
+
+    await prisma.mutexLock.deleteMany({
+      where: { key, expiresAt: { lt: now } },
     });
-  }
 
-  const waiters: Array<() => void> = [];
-  const entry = {
-    waiters,
-    release: () => {
-      memoryOwners.delete(key);
-      const next = waiters.shift();
-      if (next) next();
-      // Drain remaining waiters so they re-contend
-      while (waiters.length) waiters.shift()?.();
-    },
-  };
-  memoryOwners.set(key, entry);
-
-  return {
-    release: async () => {
-      const current = memoryOwners.get(key);
-      if (current === entry) {
-        entry.release();
+    try {
+      await prisma.mutexLock.create({
+        data: { key, token, expiresAt },
+      });
+      return {
+        release: async () => {
+          await prisma.mutexLock.deleteMany({ where: { key, token } });
+        },
+      };
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        await new Promise((r) => setTimeout(r, 40));
+        continue;
       }
-    },
-  };
+      throw err;
+    }
+  }
+  throw new Error("Could not acquire lock (busy). Try again.");
 }
 
 async function acquireRedis(key: string, waitMs: number, holdMs: number): Promise<LockHandle> {
@@ -92,8 +89,6 @@ async function acquireRedis(key: string, waitMs: number, holdMs: number): Promis
   const token = `${Date.now()}-${Math.random()}`;
   const started = Date.now();
   while (Date.now() - started < waitMs) {
-    // Hold TTL is a safety net for crashed holders only; we refresh while working isn't needed
-    // for short wallet ops. Use a longer hold than wait to avoid mid-op expiry under load.
     const ok = await client.set(`lock:${key}`, token, "PX", holdMs, "NX");
     if (ok === "OK") {
       return {
@@ -113,21 +108,17 @@ async function acquireRedis(key: string, waitMs: number, holdMs: number): Promis
   throw new Error("Could not acquire lock (busy). Try again.");
 }
 
-/** Serialize critical wallet operations per Discord user. */
+/** Serialize critical wallet operations per Discord user (Redis or Postgres — never memory-only). */
 export async function withUserLock<T>(
   userId: string,
   fn: () => Promise<T>,
   waitMs = 8_000,
 ): Promise<T> {
   const key = `user:${userId}`;
-  let handle: LockHandle;
-
-  if (redisReady) {
-    // Redis configured: never fall back to memory on contention (would break multi-instance).
-    handle = await acquireRedis(key, waitMs, Math.max(waitMs * 3, 30_000));
-  } else {
-    handle = await acquireMemory(key, waitMs);
-  }
+  const holdMs = Math.max(waitMs * 3, 30_000);
+  const handle = redisReady
+    ? await acquireRedis(key, waitMs, holdMs)
+    : await acquireDb(key, waitMs, holdMs);
 
   try {
     return await fn();

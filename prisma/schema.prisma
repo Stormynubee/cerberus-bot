@@ -86,12 +86,22 @@ model GuildSettings {
   hgDefaultEntryFee   Int    @default(0)
   /// Default max tributes when `/hungergames new` omits max_players.
   hgDefaultMaxPlayers Int    @default(24)
-  /// House-funded prize paid to the last tribute standing (seeded into prize pool).
+  /// Host-funded base prize seeded into the prize pool when a round opens (debited from host).
   hgDefaultWinPrize   Int    @default(250)
   /// Cost in HCC for a dead tribute to revive during a live round.
   hgDefaultReviveCost Int    @default(50)
   /// Max paid revives per tribute per round.
   hgDefaultMaxRevives Int    @default(2)
+}
+
+/// Cross-process mutex when Redis is unavailable (single-row CAS with TTL).
+model MutexLock {
+  key       String   @id
+  token     String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
 }
 
 model ArenaGame {

@@ -36,6 +36,7 @@ const REASON_LABEL: Record<string, string> = {
   daily_claim: "Daily claim",
   hg_prize: "Inferno Games prize",
   hg_entry: "Inferno Games entry",
+  hg_seed_prize: "Inferno Games host seed",
 };
 
 function labelReason(reason: string): string {

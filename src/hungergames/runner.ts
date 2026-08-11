@@ -82,15 +82,16 @@ function signupEmbed(
     .setDescription(
       `**${hostTag}** opened the arena.\n\n` +
         `Survive Bloodbath → Day/Night cycles → traps, wolf infection, and betrayal.\n` +
+        `This is a **story arena** — deaths are weighted and the arena forces blood when a phase stalls. Early exits are normal.\n` +
         `Only one tribute walks out.\n\n` +
         `Entry: **${entryFee > 0 ? formatCoins(entryFee) : "FREE"}**\n` +
-        `Winner prize: **${formatCoins(winPrize)}**` +
+        `Host-funded base prize: **${formatCoins(winPrize)}**` +
         (prizePool > winPrize ? ` · Pool now **${formatCoins(prizePool)}**` : "") +
         `\n` +
         `Revive: **${formatCoins(reviveCost)}** each · **${maxRevives}** max per tribute\n` +
         `Tributes: **${count}/${max}** (min ${config.hgMinPlayers})`,
     )
-    .setFooter({ text: `Game ${gameId.slice(0, 8)}` });
+    .setFooter({ text: `Game ${gameId.slice(0, 8)} · Host seed refunded if cancelled` });
 }
 
 function signupRow(gameId: string) {
@@ -297,11 +298,11 @@ export async function setupInfernoGames(
           .setTitle(`${theme.emojis.fire} Inferno Games — server defaults`)
           .setDescription(
             `Entry fee: **${current.entryFee > 0 ? formatCoins(current.entryFee) : "FREE"}**\n` +
-              `Winner prize: **${formatCoins(current.winPrize)}**\n` +
+              `Host-funded base prize: **${formatCoins(current.winPrize)}**\n` +
               `Revive cost: **${formatCoins(current.reviveCost)}**\n` +
               `Max revives / tribute: **${current.maxRevives}**\n` +
               `Max tributes: **${current.maxPlayers}**\n\n` +
-              `_Change with_\n` +
+              `_Host pays the base prize when opening a round (refunded if cancelled)._\n` +
               `\`/hungergames setup win_prize:250 revive_cost:50 max_revives:2\``,
           ),
       ],
@@ -354,10 +355,10 @@ export async function setupInfernoGames(
       successEmbed(
         "Inferno Games defaults updated",
         `Entry fee: **${nextFee > 0 ? formatCoins(nextFee) : "FREE"}**\n` +
-          `Winner prize: **${formatCoins(nextWin)}**\n` +
+          `Host-funded base prize: **${formatCoins(nextWin)}**\n` +
           `Revive: **${formatCoins(nextRevive)}** · max **${nextMaxRevives}**/tribute\n` +
           `Max tributes: **${nextMax}**\n\n` +
-          `New rounds pick these up automatically.`,
+          `New rounds debit the host for the base prize when opened.`,
       ),
     ],
   });
@@ -414,24 +415,39 @@ async function openInfernoSignup(
   const reviveCost = defaults.reviveCost;
   const maxRevives = defaults.maxRevives;
 
-  const game = await prisma.arenaGame.create({
-    data: {
-      guildId: interaction.guildId,
-      channelId: interaction.channelId,
-      hostId: interaction.user.id,
-      status: "signup",
-      phase: "signup",
-      entryFee,
-      // Seed house-funded winner prize; entry fees add on join.
-      prizePool: winPrize,
-      maxPlayers,
-      winPrize,
-      reviveCost,
-      maxRevives,
-    },
-  });
+  await ensureUser(interaction.user.id, interaction.user.username);
+  if (winPrize > 0) {
+    await debit(interaction.user.id, winPrize, "hg_seed_prize");
+  }
 
-  // If a race created another, cancel the newer duplicate
+  let game;
+  try {
+    game = await prisma.arenaGame.create({
+      data: {
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        hostId: interaction.user.id,
+        status: "signup",
+        phase: "signup",
+        entryFee,
+        // Host-funded seed (debited above); entry fees add on join.
+        prizePool: winPrize,
+        maxPlayers,
+        winPrize,
+        reviveCost,
+        maxRevives,
+      },
+    });
+  } catch (err) {
+    if (winPrize > 0) {
+      await creditForced(interaction.user.id, winPrize, "hg_seed_refund_create_fail").catch(
+        (e) => console.warn("[hg] seed refund failed", e),
+      );
+    }
+    throw err;
+  }
+
+  // If a race created another, cancel the newer duplicate and refund the host seed.
   const siblings = await prisma.arenaGame.findMany({
     where: { guildId: interaction.guildId, status: "signup" },
     orderBy: { createdAt: "asc" },
@@ -439,8 +455,11 @@ async function openInfernoSignup(
   if (siblings.length > 1 && siblings[0]!.id !== game.id) {
     await prisma.arenaGame.update({
       where: { id: game.id },
-      data: { status: "cancelled" },
+      data: { status: "cancelled", prizePool: 0 },
     });
+    if (winPrize > 0) {
+      await creditForced(interaction.user.id, winPrize, "hg_seed_refund_duplicate", game.id);
+    }
     throw new EconomyError("An Inferno Games round is already open in this server.");
   }
 
@@ -469,6 +488,11 @@ async function refundAllTributes(gameId: string, reason: string) {
         console.warn("[hg] refund failed", t.userId, err),
       );
     }
+  }
+  if (game.winPrize > 0) {
+    await creditForced(game.hostId, game.winPrize, `${reason}_host_seed`, gameId).catch((err) =>
+      console.warn("[hg] host seed refund failed", game.hostId, err),
+    );
   }
   await prisma.arenaGame.update({
     where: { id: gameId },
@@ -793,7 +817,7 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
       embeds: [
         baseEmbed(theme.colors.muted)
           .setTitle("Inferno Games cancelled")
-          .setDescription("Entry fees refunded. The mutts go hungry tonight."),
+          .setDescription("Entry fees and the host prize seed were refunded. The mutts go hungry tonight."),
       ],
       components: [],
     });
@@ -1209,13 +1233,20 @@ async function crownWinner(
       payoutLine = `Prize: **${formatCoins(prizePool)}** HellCatCoins deposited.\n\n`;
     } else if (!winner && prizePool > 0) {
       const game = await loadGame(gameId);
-      if (game && game.entryFee > 0) {
-        for (const t of game.tributes) {
-          await creditForced(t.userId, game.entryFee, "hg_no_victor_refund", gameId).catch(
+      if (game) {
+        if (game.winPrize > 0) {
+          await creditForced(game.hostId, game.winPrize, "hg_no_victor_seed_refund", gameId).catch(
             () => undefined,
           );
         }
-        payoutLine = `No victor — entry fees refunded.\n\n`;
+        if (game.entryFee > 0) {
+          for (const t of game.tributes) {
+            await creditForced(t.userId, game.entryFee, "hg_no_victor_refund", gameId).catch(
+              () => undefined,
+            );
+          }
+        }
+        payoutLine = `No victor — host seed and entry fees refunded.\n\n`;
       }
     }
 
