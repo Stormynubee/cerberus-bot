@@ -14,6 +14,7 @@ import {
 import { config } from "../config.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed, successEmbed } from "../utils/embeds.js";
+import { respond } from "../utils/interaction.js";
 
 function isAdmin(interaction: ChatInputCommandInteraction): boolean {
   return (
@@ -85,9 +86,8 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!isAdmin(interaction)) {
-    await interaction.reply({
+    await respond(interaction, {
       embeds: [errorEmbed("Need **Manage Server** permission.")],
-      ephemeral: true,
     });
     return;
   }
@@ -100,7 +100,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const amount = interaction.options.getInteger("amount", true);
       await ensureUser(user.id, user.username);
       const updated = await credit(user.id, amount, `admin_grant:${interaction.user.id}`);
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           successEmbed(
             "Granted",
@@ -116,7 +116,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const amount = interaction.options.getInteger("amount", true);
       await ensureUser(user.id, user.username);
       const updated = await debit(user.id, amount, `admin_revoke:${interaction.user.id}`);
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           successEmbed(
             "Revoked",
@@ -132,7 +132,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const frozen = interaction.options.getBoolean("frozen", true);
       await ensureUser(user.id, user.username);
       await prisma.user.update({ where: { id: user.id }, data: { frozen } });
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           successEmbed(
             frozen ? "Wallet frozen" : "Wallet unfrozen",
@@ -158,7 +158,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             `\`${e.createdAt.toISOString().slice(0, 16)}\` ${e.delta >= 0 ? "+" : ""}${e.delta} · ${e.reason} · bal ${e.balance}`,
         )
         .join("\n");
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           baseEmbed(theme.colors.gold)
             .setTitle(`Audit — ${user.username}`)
@@ -166,7 +166,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               `Balance: **${formatCoins(bal.balance)}** · Frozen: **${bal.frozen}**\n\n${lines || "_No ledger yet._"}`,
             ),
         ],
-        ephemeral: true,
       });
       return;
     }
@@ -187,7 +186,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           bigWinThreshold: threshold,
         },
       });
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           successEmbed(
             "Big-win feed updated",
@@ -211,7 +210,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         },
         update: { arenaMasterRole: role ? role.id : null },
       });
-      await interaction.reply({
+      await respond(interaction, {
         embeds: [
           successEmbed(
             "Arena Master updated",
@@ -224,6 +223,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Admin command failed.";
-    await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+    await respond(interaction, { embeds: [errorEmbed(msg)] });
   }
 }

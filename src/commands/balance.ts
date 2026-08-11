@@ -5,6 +5,7 @@ import {
 import { ensureUser, getBalance } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
 import { walletEmbed } from "../utils/embeds.js";
+import { respond } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("balance")
@@ -18,7 +19,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await ensureUser(target.id, target.username);
   const user = await getBalance(target.id, target.username);
 
-  await interaction.reply({
+  await respond(interaction, {
     embeds: [
       walletEmbed(target, user.balance, {
         description:

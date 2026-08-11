@@ -5,6 +5,7 @@ import {
 import { claimDaily, EconomyError } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
 import { errorEmbed, successEmbed } from "../utils/embeds.js";
+import { respond } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("daily")
@@ -13,7 +14,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   try {
     const result = await claimDaily(interaction.user.id, interaction.user.username);
-    await interaction.reply({
+    await respond(interaction, {
       embeds: [
         successEmbed(
           `${theme.emojis.fire} Daily tribute claimed`,
@@ -25,6 +26,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Could not claim daily.";
-    await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+    await respond(interaction, { embeds: [errorEmbed(msg)] });
   }
 }

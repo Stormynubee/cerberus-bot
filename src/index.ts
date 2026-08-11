@@ -1,28 +1,22 @@
 import "dotenv/config";
 import { createClient, loadCommands, registerCommands, shutdown } from "./client.js";
 import { recoverStuckArenas } from "./hungergames/runner.js";
-import { startHealthServer } from "./health.js";
+import { startHealthServer, startKeepAlive } from "./health.js";
 import { connectRedis } from "./locks.js";
 import { bootstrapDatabase, verifyDatabaseConnection } from "./services/dbBootstrap.js";
 import { sweepExpiredChallenges } from "./services/expiry.js";
 
 async function main() {
+  // Bind PORT first so Render marks the service healthy while we finish boot.
   startHealthServer();
+  startKeepAlive();
 
-  await verifyDatabaseConnection();  console.log("[greekbot] Database connected");
+  await verifyDatabaseConnection();
+  console.log("[greekbot] Database connected");
   await bootstrapDatabase();
-
   await connectRedis();
 
-  const recovered = await recoverStuckArenas();
-  if (recovered > 0) console.log(`[greekbot] Recovered ${recovered} stuck arena game(s)`);
-
-  const refunded = await sweepExpiredChallenges();
-  if (refunded > 0) console.log(`[greekbot] Refunded ${refunded} abandoned wager(s) on boot`);
-
   const commands = await loadCommands();
-  await registerCommands(commands);
-
   const client = createClient(commands);
 
   const stop = async () => {
@@ -35,7 +29,24 @@ async function main() {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  // Connect to Discord ASAP — do NOT block login on command re-register / arena recovery.
   await client.login(process.env.DISCORD_TOKEN);
+
+  void (async () => {
+    try {
+      await registerCommands(commands);
+    } catch (err) {
+      console.warn("[greekbot] Command register failed", err);
+    }
+    try {
+      const recovered = await recoverStuckArenas();
+      if (recovered > 0) console.log(`[greekbot] Recovered ${recovered} stuck arena game(s)`);
+      const refunded = await sweepExpiredChallenges();
+      if (refunded > 0) console.log(`[greekbot] Refunded ${refunded} abandoned wager(s) on boot`);
+    } catch (err) {
+      console.warn("[greekbot] Boot recovery failed", err);
+    }
+  })();
 }
 
 process.on("unhandledRejection", (err) => {

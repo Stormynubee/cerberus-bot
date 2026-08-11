@@ -5,6 +5,7 @@ import {
 import { EconomyError, ensureUser, transfer } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
 import { errorEmbed, successEmbed } from "../utils/embeds.js";
+import { respond } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("tip")
@@ -24,7 +25,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await ensureUser(interaction.user.id, interaction.user.username);
     await ensureUser(target.id, target.username);
     const { from, to } = await transfer(interaction.user.id, target.id, amount);
-    await interaction.reply({
+    await respond(interaction, {
       embeds: [
         successEmbed(
           `${theme.emojis.coin} Tip sent`,
@@ -35,6 +36,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Tip failed.";
-    await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
+    await respond(interaction, { embeds: [errorEmbed(msg)] });
   }
 }

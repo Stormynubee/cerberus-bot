@@ -5,6 +5,7 @@ import {
 import { getJackpot, topBalances } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed } from "../utils/embeds.js";
+import { respond } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("leaderboard")
@@ -25,7 +26,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           })
           .join("\n");
 
-  await interaction.reply({
+  await respond(interaction, {
     embeds: [
       baseEmbed(theme.colors.gold)
         .setTitle(`${theme.emojis.trophy} Inferno Leaderboard`)

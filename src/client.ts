@@ -99,6 +99,18 @@ export function createClient(commands: Collection<string, BotCommand>) {
       if (interaction.isChatInputCommand()) {
         const command = commands.get(interaction.commandName);
         if (!command) return;
+
+        // ALWAYS ack within Discord's 3s window before any DB / game work.
+        if (!interaction.deferred && !interaction.replied) {
+          const ephemeral =
+            interaction.commandName === "help" ||
+            interaction.commandName === "hell" ||
+            interaction.commandName === "admin";
+          await interaction.deferReply(
+            ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+          );
+        }
+
         await command.execute(interaction as never);
         return;
       }
