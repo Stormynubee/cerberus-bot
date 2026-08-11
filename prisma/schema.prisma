@@ -78,10 +78,14 @@ model Jackpot {
 }
 
 model GuildSettings {
-  guildId         String @id
-  bigWinChannelId String?
-  bigWinThreshold Int    @default(500)
-  arenaMasterRole String?
+  guildId            String @id
+  bigWinChannelId    String?
+  bigWinThreshold    Int    @default(500)
+  arenaMasterRole    String?
+  /// Default Inferno Games entry fee when `/hungergames new` omits entry_fee (0 = free).
+  hgDefaultEntryFee  Int    @default(0)
+  /// Default max tributes when `/hungergames new` omits max_players.
+  hgDefaultMaxPlayers Int   @default(24)
 }
 
 model ArenaGame {

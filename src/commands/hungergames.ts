@@ -6,11 +6,34 @@ import { EconomyError } from "../services/wallet.js";
 import { config } from "../config.js";
 import { errorEmbed } from "../utils/embeds.js";
 import { ackCommand } from "../utils/interaction.js";
-import { createInfernoGames, statusInfernoGames } from "../hungergames/runner.js";
+import {
+  createInfernoGames,
+  getHgDefaults,
+  setupInfernoGames,
+  statusInfernoGames,
+} from "../hungergames/runner.js";
 
 export const data = new SlashCommandBuilder()
   .setName("hungergames")
   .setDescription("Inferno Games — Hunger Games battle royale for the server")
+  .addSubcommand((sc) =>
+    sc
+      .setName("setup")
+      .setDescription("Set the server default entry fee (and max players) for Inferno Games")
+      .addIntegerOption((o) =>
+        o
+          .setName("entry_fee")
+          .setDescription("Default HellCatCoins entry fee (0 = free)")
+          .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("max_players")
+          .setDescription(`Default max tributes (${config.hgMinPlayers}–${config.hgMaxPlayers})`)
+          .setMinValue(config.hgMinPlayers)
+          .setMaxValue(config.hgMaxPlayers),
+      ),
+  )
   .addSubcommand((sc) =>
     sc
       .setName("new")
@@ -18,7 +41,7 @@ export const data = new SlashCommandBuilder()
       .addIntegerOption((o) =>
         o
           .setName("entry_fee")
-          .setDescription("HellCatCoins entry fee (0 = free)")
+          .setDescription("Override entry fee for this round (omit = server default)")
           .setMinValue(0),
       )
       .addIntegerOption((o) =>
@@ -37,9 +60,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
   await ackCommand(interaction);
   try {
+    if (sub === "setup") {
+      const fee = interaction.options.getInteger("entry_fee");
+      const max = interaction.options.getInteger("max_players");
+      await setupInfernoGames(interaction, fee, max);
+      return;
+    }
     if (sub === "new") {
-      const fee = interaction.options.getInteger("entry_fee") ?? 0;
-      const max = interaction.options.getInteger("max_players") ?? config.hgMaxPlayers;
+      const defaults = interaction.guildId
+        ? await getHgDefaults(interaction.guildId)
+        : { entryFee: 0, maxPlayers: config.hgMaxPlayers };
+      const fee = interaction.options.getInteger("entry_fee") ?? defaults.entryFee;
+      const max = interaction.options.getInteger("max_players") ?? defaults.maxPlayers;
       await createInfernoGames(interaction, fee, max);
       return;
     }

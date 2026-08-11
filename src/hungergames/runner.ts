@@ -184,11 +184,9 @@ function memberHasRole(
   return false;
 }
 
-async function canManage(
+async function canConfigureArena(
   interaction: ButtonInteraction | ChatInputCommandInteraction,
-  hostId: string,
 ): Promise<boolean> {
-  if (interaction.user.id === hostId) return true;
   if (
     interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) ||
     interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
@@ -206,6 +204,14 @@ async function canManage(
   return false;
 }
 
+async function canManage(
+  interaction: ButtonInteraction | ChatInputCommandInteraction,
+  hostId: string,
+): Promise<boolean> {
+  if (interaction.user.id === hostId) return true;
+  return canConfigureArena(interaction);
+}
+
 function assertFee(fee: number) {
   if (fee > 0 && fee < config.minBet) {
     throw new EconomyError(`Entry fee must be 0 or at least ${config.minBet} HCC.`);
@@ -213,6 +219,87 @@ function assertFee(fee: number) {
   if (fee > config.maxBet) {
     throw new EconomyError(`Entry fee max is ${config.maxBet} HCC.`);
   }
+}
+
+export async function getHgDefaults(guildId: string): Promise<{
+  entryFee: number;
+  maxPlayers: number;
+}> {
+  const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
+  const maxPlayers = Math.min(
+    Math.max(settings?.hgDefaultMaxPlayers ?? config.hgMaxPlayers, config.hgMinPlayers),
+    config.hgMaxPlayers,
+  );
+  return {
+    entryFee: settings?.hgDefaultEntryFee ?? 0,
+    maxPlayers,
+  };
+}
+
+/** Set server default entry fee / max players for `/hungergames new`. */
+export async function setupInfernoGames(
+  interaction: ChatInputCommandInteraction,
+  entryFee: number | null,
+  maxPlayers: number | null,
+) {
+  if (!interaction.guildId) {
+    throw new EconomyError("Inferno Games setup is server-only.");
+  }
+  if (!(await canConfigureArena(interaction))) {
+    throw new EconomyError(
+      "Need **Manage Server**, **Manage Messages**, or the Arena Master role to set the entry price.",
+    );
+  }
+
+  const current = await getHgDefaults(interaction.guildId);
+
+  if (entryFee === null && maxPlayers === null) {
+    await replyOrEdit(interaction, {
+      embeds: [
+        baseEmbed(theme.colors.gold)
+          .setTitle(`${theme.emojis.fire} Inferno Games — server defaults`)
+          .setDescription(
+            `Entry fee: **${current.entryFee > 0 ? formatCoins(current.entryFee) : "FREE"}**\n` +
+              `Max tributes: **${current.maxPlayers}**\n\n` +
+              `_Used when \`/hungergames new\` omits those options._\n` +
+              `Set them with \`/hungergames setup entry_fee:… max_players:…\`.`,
+          ),
+      ],
+    });
+    return;
+  }
+
+  const nextFee = entryFee ?? current.entryFee;
+  const nextMax = Math.min(
+    Math.max(maxPlayers ?? current.maxPlayers, config.hgMinPlayers),
+    config.hgMaxPlayers,
+  );
+  if (nextFee < 0) throw new EconomyError("Entry fee cannot be negative.");
+  assertFee(nextFee);
+
+  await prisma.guildSettings.upsert({
+    where: { guildId: interaction.guildId },
+    create: {
+      guildId: interaction.guildId,
+      hgDefaultEntryFee: nextFee,
+      hgDefaultMaxPlayers: nextMax,
+    },
+    update: {
+      hgDefaultEntryFee: nextFee,
+      hgDefaultMaxPlayers: nextMax,
+    },
+  });
+
+  await replyOrEdit(interaction, {
+    embeds: [
+      successEmbed(
+        "Inferno Games price updated",
+        `Default entry fee: **${nextFee > 0 ? formatCoins(nextFee) : "FREE"}**\n` +
+          `Default max tributes: **${nextMax}**\n\n` +
+          `Hosts can still override per round with \`/hungergames new\`.`,
+      ),
+    ],
+  });
 }
 
 export async function createInfernoGames(

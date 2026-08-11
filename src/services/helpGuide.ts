@@ -103,7 +103,8 @@ export const TABS: Record<HelpTab, TabContent> = {
     body:
       "Hunger-Games style arena with **cool HellCat** chaos: wolf bites, traps, night infection, casualty reports.",
     steps: [
-      "Host: `/hungergames new` (optional entry fee → prize pool)",
+      "Mods: `/hungergames setup entry_fee:…` — set default price",
+      "Host: `/hungergames new` (uses server default, or override entry_fee)",
       "Everyone taps **Join** on the signup message",
       "Host / Arena Master / mods tap **Start** (min players required)",
       "Phases: Bloodbath → Day/Night → Feast → Finale",
