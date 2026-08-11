@@ -12,10 +12,10 @@ import { withUserLock } from "../locks.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
   Card,
-  cardRankValue,
   draw,
   formatCard,
   freshDeck,
+  hiLoRankValue,
 } from "../games/cards.js";
 import {
   addToJackpot,
@@ -106,7 +106,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         baseEmbed(theme.colors.inferno)
           .setTitle("🃏 High-Low")
           .setDescription(
-            `Card: ${formatCard(payload.current)} (rank ${cardRankValue(payload.current)})\n` +
+            `Card: ${formatCard(payload.current)} (rank ${hiLoRankValue(payload.current)})\n` +
               `Pot: **${formatCoins(amount)}** · Streak: **0**\n` +
               `Will the next card be higher or lower?`,
           ),
@@ -193,8 +193,8 @@ export async function handleHighLowButton(interaction: ButtonInteraction) {
     }
     const payload = JSON.parse(fresh.payload) as HiLoPayload;
     const next = draw(payload.deck);
-    const curVal = cardRankValue(payload.current);
-    const nextVal = cardRankValue(next);
+    const curVal = hiLoRankValue(payload.current);
+    const nextVal = hiLoRankValue(next);
     const correct =
       action === "high" ? nextVal > curVal : action === "low" ? nextVal < curVal : false;
     const tie = nextVal === curVal;

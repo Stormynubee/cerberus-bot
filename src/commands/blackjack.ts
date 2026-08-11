@@ -5,6 +5,7 @@ import {
 import { startBlackjack } from "../games/blackjack.js";
 import { EconomyError } from "../services/wallet.js";
 import { errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("blackjack")
@@ -15,14 +16,11 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("amount", true);
+  await ackCommand(interaction);
   try {
     await startBlackjack(interaction, amount);
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Blackjack failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
-    }
+    await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }

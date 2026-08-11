@@ -26,6 +26,7 @@ import {
 } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { flipCoin } from "../utils/random.js";
 
 function spinFrames(choice: "heads" | "tails"): string[] {
   const frames = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"];
@@ -43,9 +44,7 @@ export async function playCoinflipVsHouse(
   choice: "heads" | "tails",
 ) {
   assertBetAmount(amount);
-  await ensureUser(interaction.user.id, interaction.user.username);
 
-  // Ack first so Discord doesn't time out; debit after.
   const spinning = baseEmbed(theme.colors.night)
     .setTitle(`${theme.emojis.spin} HellCat Spin`)
     .setDescription(spinFrames(choice)[0]!)
@@ -53,9 +52,10 @@ export async function playCoinflipVsHouse(
       { name: "Wager", value: formatCoins(amount), inline: true },
       { name: "Your call", value: choice.toUpperCase(), inline: true },
     );
-  await interaction.reply({ embeds: [spinning] });
+  await interaction.editReply({ embeds: [spinning] });
 
   try {
+    await ensureUser(interaction.user.id, interaction.user.username);
     await debit(interaction.user.id, amount, "coinflip_bet");
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Could not place wager.";
@@ -63,7 +63,7 @@ export async function playCoinflipVsHouse(
     return;
   }
 
-  const result: "heads" | "tails" = Math.random() < 0.5 ? "heads" : "tails";
+  const result = flipCoin();
   const won = result === choice;
   const msg = await interaction.fetchReply();
 
@@ -198,7 +198,7 @@ export async function challengeCoinflipPvP(
         `Expires <t:${Math.floor(expiresAt.getTime() / 1000)}:R>.`,
     );
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `${opponent}`,
     embeds: [embed],
     components: [row],
@@ -298,8 +298,10 @@ export async function handleCoinflipButton(interaction: ButtonInteraction) {
     }
 
     const payload = JSON.parse(session.payload) as { choice: "heads" | "tails" };
-    const result: "heads" | "tails" = Math.random() < 0.5 ? "heads" : "tails";
+    const result = flipCoin();
     const p1Wins = result === payload.choice;
+    const p1Side = payload.choice;
+    const p2Side = payload.choice === "heads" ? "tails" : "heads";
     const pot = session.wager * 2;
     const winnerId = p1Wins ? session.playerOneId : session.playerTwoId!;
     const loserId = p1Wins ? session.playerTwoId! : session.playerOneId;
@@ -342,16 +344,29 @@ export async function handleCoinflipButton(interaction: ButtonInteraction) {
       data: { winnerId, payload: JSON.stringify({ ...payload, result }) },
     });
 
-    await interaction.editReply({
-      embeds: [
-        baseEmbed(theme.colors.gold)
-          .setTitle(`${theme.emojis.trophy} ${result.toUpperCase()}!`)
-          .setDescription(
-            `<@${winnerId}> takes the pot of **${formatCoins(pot)}**.\n` +
-              `<@${loserId}> walks back into the smoke.`,
-          ),
-      ],
-      components: [],
-    });
+    const resultEmbed = baseEmbed(theme.colors.gold)
+      .setTitle(`${theme.emojis.trophy} ${result.toUpperCase()}!`)
+      .setDescription(
+        `Coin lands **${result.toUpperCase()}**.\n` +
+          `<@${session.playerOneId}> called **${p1Side.toUpperCase()}** · ` +
+          `<@${session.playerTwoId}> had **${p2Side.toUpperCase()}**.\n\n` +
+          `<@${winnerId}> takes the pot of **${formatCoins(pot)}**.\n` +
+          `<@${loserId}> walks back into the smoke.`,
+      );
+
+    const resultPayload = { embeds: [resultEmbed], components: [] };
+    try {
+      const channel = interaction.channel;
+      if (channel?.isTextBased() && session.messageId) {
+        const duelMessage = await channel.messages.fetch(session.messageId).catch(() => null);
+        if (duelMessage) {
+          await duelMessage.edit(resultPayload);
+          return;
+        }
+      }
+      await interaction.editReply(resultPayload);
+    } catch (err) {
+      console.warn("[coinflip] result UI update failed", session.id, err);
+    }
   }
 }

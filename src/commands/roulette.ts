@@ -17,6 +17,7 @@ import {
 import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { randomInt } from "../utils/random.js";
 
 function colorOf(n: number): "red" | "black" | "green" {
   if (n === 0) return "green";
@@ -63,7 +64,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await debit(interaction.user.id, amount, "roulette_bet");
     debited = true;
 
-    const result = Math.floor(Math.random() * 37);
+    const result = randomInt(37);
     const color = colorOf(result);
 
     const msg = await interaction.fetchReply();

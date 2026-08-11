@@ -24,6 +24,7 @@ import {
 import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, sleep, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { randomFloat } from "../utils/random.js";
 
 type CrashRound = {
   sessionId: string;
@@ -38,7 +39,7 @@ type CrashRound = {
 const rounds = new Map<string, CrashRound>();
 
 function crashPoint(): number {
-  const r = Math.random();
+  const r = randomFloat();
   if (r < 0.03) return 1.0;
   return Math.max(1.0, Math.floor((0.99 / (1 - r)) * 100) / 100);
 }

@@ -1,5 +1,6 @@
 import type { ArenaGame, ArenaTribute } from "@prisma/client";
 import { prisma } from "../db.js";
+import { randomBool, randomChoice, shuffle } from "../utils/random.js";
 import {
   ARENA_EVENTS,
   ArenaEventDef,
@@ -45,15 +46,6 @@ function living(tributes: TributeState[]): TributeState[] {
   return tributes.filter((t) => t.alive);
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
-
 function eligibleEvents(
   phase: ArenaPhase,
   aliveCount: number,
@@ -97,13 +89,13 @@ export function applyEvent(
   if (!pool.length) return null;
 
   // Prefer infection-death at night for infected tributes
-  if (phase === "night" && hasInfected && Math.random() < 0.45) {
+  if (phase === "night" && hasInfected && randomBool(0.45)) {
     const deathPool = pool.filter((e) => e.id === "night-infection-death");
     if (deathPool.length) pool = deathPool;
   }
 
   // Prefer spread if infected + someone clean
-  if (phase === "night" && hasInfected && cleanAlive.length > 0 && Math.random() < 0.35) {
+  if (phase === "night" && hasInfected && cleanAlive.length > 0 && randomBool(0.35)) {
     const spread = pool.filter((e) => e.kind === "spread");
     if (spread.length) pool = spread;
   }
@@ -207,7 +199,7 @@ export function runPhase(
   if (
     diedThisPhase.length === 0 &&
     living(tributes).length > 1 &&
-    (phase === "finale" || living(tributes).length > 3 || Math.random() < 0.55)
+    (phase === "finale" || living(tributes).length > 3 || randomBool(0.55))
   ) {
     // Guaranteed fatal attempt: pick two alive and kill one
     const aliveNow = shuffle(living(tributes));
@@ -238,10 +230,7 @@ export function runPhase(
     }
   }
 
-  const banter =
-    Math.random() < 0.55
-      ? BANTER_LINES[Math.floor(Math.random() * BANTER_LINES.length)]
-      : undefined;
+  const banter = randomBool(0.55) ? randomChoice(BANTER_LINES) : undefined;
 
   return {
     phase,

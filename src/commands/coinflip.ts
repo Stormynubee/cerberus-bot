@@ -5,6 +5,7 @@ import {
 import { challengeCoinflipPvP, playCoinflipVsHouse } from "../games/coinflip.js";
 import { EconomyError } from "../services/wallet.js";
 import { errorEmbed } from "../utils/embeds.js";
+import { ackCommand } from "../utils/interaction.js";
 
 export const data = new SlashCommandBuilder()
   .setName("coinflip")
@@ -31,6 +32,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const side = interaction.options.getString("side", true) as "heads" | "tails";
   const opponent = interaction.options.getUser("opponent");
 
+  // Ack within Discord's 3s window — DB/wallet work happens after.
+  await ackCommand(interaction);
+
   try {
     if (opponent) {
       await challengeCoinflipPvP(interaction, opponent, amount, side);
@@ -39,10 +43,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
   } catch (err) {
     const msg = err instanceof EconomyError ? err.message : "Coinflip failed.";
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed(msg)], ephemeral: true });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], ephemeral: true });
-    }
+    await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }

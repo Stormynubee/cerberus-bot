@@ -494,12 +494,4 @@ export function fillTemplate(text: string, names: string[]): string {
   return text.replace(/\{(\d+)\}/g, (_, idx) => names[Number(idx)] ?? "?");
 }
 
-export function pickWeighted<T extends { weight?: number }>(items: T[]): T {
-  const total = items.reduce((s, i) => s + (i.weight ?? 1), 0);
-  let roll = Math.random() * total;
-  for (const item of items) {
-    roll -= item.weight ?? 1;
-    if (roll <= 0) return item;
-  }
-  return items[items.length - 1]!;
-}
+export { pickWeighted } from "../utils/random.js";

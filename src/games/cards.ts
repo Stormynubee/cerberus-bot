@@ -1,3 +1,5 @@
+import { shuffle } from "../utils/random.js";
+
 export type Suit = "♠" | "♥" | "♦" | "♣";
 export type Rank =
   | "A"
@@ -26,12 +28,7 @@ export function freshDeck(): Card[] {
       deck.push({ rank, suit });
     }
   }
-  // Fisher–Yates
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j]!, deck[i]!];
-  }
-  return deck;
+  return shuffle(deck);
 }
 
 export function draw(deck: Card[]): Card {
@@ -89,6 +86,15 @@ export function cardRankValue(card: Card): number {
     "2": 2,
   };
   return map[card.rank];
+}
+
+/** High-Low uses Ace low (1) through King (13) — standard climb rules. */
+export function hiLoRankValue(card: Card): number {
+  if (card.rank === "A") return 1;
+  if (card.rank === "K") return 13;
+  if (card.rank === "Q") return 12;
+  if (card.rank === "J") return 11;
+  return Number(card.rank);
 }
 
 export function isBlackjack(cards: Card[]): boolean {

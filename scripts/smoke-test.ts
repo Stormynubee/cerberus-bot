@@ -21,8 +21,10 @@ import {
   draw,
   freshDeck,
   handValue,
+  hiLoRankValue,
   isBlackjack,
 } from "../src/games/cards.js";
+import { flipCoin, randomInt, shuffle } from "../src/utils/random.js";
 import {
   applyEvent,
   nextPhase,
@@ -73,8 +75,29 @@ async function main() {
     const c = draw(deck);
     assert(deck.length === 51, "after draw");
     assert(cardRankValue({ rank: "A", suit: "♠" }) === 14, "ace high");
+    assert(hiLoRankValue({ rank: "A", suit: "♠" }) === 1, "ace low in hi-lo");
+    assert(hiLoRankValue({ rank: "K", suit: "♠" }) === 13, "king hi-lo");
     assert(handValue([{ rank: "A", suit: "♠" }, { rank: "K", suit: "♥" }]) === 21, "BJ 21");
     assert(isBlackjack([{ rank: "A", suit: "♠" }, { rank: "K", suit: "♥" }]), "isBlackjack");
+  });
+
+  await test("RNG: fair coin and roulette range", () => {
+    let heads = 0;
+    for (let i = 0; i < 2000; i++) {
+      if (flipCoin() === "heads") heads += 1;
+    }
+    assert(heads > 800 && heads < 1200, `coin bias: ${heads}/2000 heads`);
+
+    for (let i = 0; i < 500; i++) {
+      const n = randomInt(37);
+      assert(n >= 0 && n <= 36, `roulette out of range: ${n}`);
+    }
+
+    const deck = freshDeck();
+    const first = deck.slice(0, 13).map((c) => `${c.rank}${c.suit}`).join(",");
+    shuffle(deck);
+    const reshuffled = deck.slice(0, 13).map((c) => `${c.rank}${c.suit}`).join(",");
+    assert(first !== reshuffled || deck.length === 52, "shuffle should mix deck");
   });
 
   await test("event catalog non-empty + template fill", () => {

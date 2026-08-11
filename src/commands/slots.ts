@@ -18,6 +18,7 @@ import {
 import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
+import { randomChoice } from "../utils/random.js";
 
 const SYMBOLS = ["🏛️", "⚔️", "🐺", "🔥", "🪙", "💀", "🧿"] as const;
 const PAY: Record<string, number> = {
@@ -31,7 +32,7 @@ const PAY: Record<string, number> = {
 };
 
 function spin(): [string, string, string] {
-  const pick = () => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]!;
+  const pick = () => randomChoice(SYMBOLS);
   return [pick(), pick(), pick()];
 }
 
