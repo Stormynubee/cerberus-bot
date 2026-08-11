@@ -126,6 +126,27 @@ export function hiLoWinMultiplier(
   return Math.min(13, Math.max(1.01, Math.floor(raw * 100) / 100));
 }
 
+/** Expected pot multiplier for a guess (ties push). Used by tests / fairness checks. */
+export function hiLoDecisionEv(
+  deckBeforeDraw: readonly Card[],
+  current: Card,
+  pick: "high" | "low",
+): number {
+  const n = deckBeforeDraw.length;
+  if (n === 0) return 1;
+  const cur = hiLoRankValue(current);
+  let favor = 0;
+  let ties = 0;
+  for (const c of deckBeforeDraw) {
+    const v = hiLoRankValue(c);
+    if (v === cur) ties += 1;
+    else if (pick === "high" ? v > cur : v < cur) favor += 1;
+  }
+  if (favor <= 0) return ties / n; // can only push or lose
+  const mult = hiLoWinMultiplier(deckBeforeDraw, current, pick);
+  return (favor / n) * mult + ties / n;
+}
+
 export function isBlackjack(cards: Card[]): boolean {
   return cards.length === 2 && handValue(cards) === 21;
 }

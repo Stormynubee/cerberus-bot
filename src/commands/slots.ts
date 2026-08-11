@@ -24,29 +24,14 @@ import { maybeAnnounceBigWin } from "../services/bigwin.js";
 import { formatCoins, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
 import { ackCommand } from "../utils/interaction.js";
-import { randomChoice } from "../utils/random.js";
-
-const SYMBOLS = ["🏛️", "⚔️", "🐺", "🔥", "🪙", "💀", "🧿"] as const;
-const PAY: Record<string, number> = {
-  "🏛️": 20,
-  "⚔️": 14,
-  "🐺": 10,
-  "🔥": 8,
-  "🪙": 6,
-  "💀": 4,
-  "🧿": 3,
-};
+import { slotsPayout, slotsSpin } from "../games/slotsMath.js";
 
 function spin(): [string, string, string] {
-  return [randomChoice(SYMBOLS), randomChoice(SYMBOLS), randomChoice(SYMBOLS)];
+  return slotsSpin();
 }
 
 function payout(reels: [string, string, string], bet: number): number {
-  const [a, b, c] = reels;
-  if (a === b && b === c) return bet * (PAY[a] ?? 2);
-  // Any two matching symbols (including non-adjacent)
-  if (a === b || b === c || a === c) return bet * 2;
-  return 0;
+  return slotsPayout(reels, bet);
 }
 
 export const data = new SlashCommandBuilder()

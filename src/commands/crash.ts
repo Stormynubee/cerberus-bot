@@ -26,6 +26,10 @@ import { formatCoins, sleep, theme } from "../theme.js";
 import { baseEmbed, errorEmbed } from "../utils/embeds.js";
 import { ackCommand } from "../utils/interaction.js";
 import { randomFloat } from "../utils/random.js";
+import {
+  crashActivePayload,
+  crashRevealedPayload,
+} from "../games/crashCommit.js";
 
 const TICK_MS = 700;
 const MULT_STEP = 0.15;
@@ -65,6 +69,19 @@ function claimEnd(round: CrashRound): boolean {
   return true;
 }
 
+async function revealCrashInDb(
+  sessionId: string,
+  crashAt: number,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await prisma.gameSession
+    .update({
+      where: { id: sessionId },
+      data: { payload: crashRevealedPayload(sessionId, crashAt, extra) },
+    })
+    .catch((err) => console.warn("[crash] reveal payload failed", sessionId, err));
+}
+
 export const data = new SlashCommandBuilder()
   .setName("crash")
   .setDescription("Inferno rocket — ~1% house edge; 3% chance of instant 1.00x bust")
@@ -79,7 +96,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await ackCommand(interaction);
     await ensureUser(interaction.user.id, interaction.user.username);
 
-    const session = await withUserLock(interaction.user.id, async () => {
+    const { session, crashAt } = await withUserLock(interaction.user.id, async () => {
       for (const r of rounds.values()) {
         if (r.userId === interaction.user.id && !r.ended) {
           throw new EconomyError("Finish your current crash round first.");
@@ -96,28 +113,32 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       if (existing) throw new EconomyError("Finish your current crash round first.");
 
       await debitUnlocked(interaction.user.id, amount, "crash_bet");
-      const crashAt = crashPoint();
+      const point = crashPoint();
 
       try {
-        return await prisma.gameSession.create({
+        const created = await prisma.gameSession.create({
           data: {
             type: "crash",
             status: "active",
             wager: amount,
             playerOneId: interaction.user.id,
-            payload: JSON.stringify({ crashAt }),
+            // Commit only — crashAt stays in process memory until settle.
+            payload: "{}",
             channelId: interaction.channelId,
-            expiresAt: crashExpiresAt(crashAt),
+            expiresAt: crashExpiresAt(point),
           },
         });
+        await prisma.gameSession.update({
+          where: { id: created.id },
+          data: { payload: crashActivePayload(created.id, point) },
+        });
+        return { session: created, crashAt: point };
       } catch (err) {
         await creditForcedUnlocked(interaction.user.id, amount, "crash_refund_create_fail");
         throw err;
       }
     });
 
-    const payload = JSON.parse(session.payload) as { crashAt: number };
-    const crashAt = payload.crashAt;
     const roundId = session.id;
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -188,6 +209,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
     rounds.delete(roundId);
+    await revealCrashInDb(session.id, crashAt, { outcome: "bust" });
 
     await addToJackpot(Math.floor(amount * 0.02));
     await recordMatchResult({
@@ -266,6 +288,10 @@ export async function handleCrashButton(interaction: ButtonInteraction) {
     const { net, rake } = applyRake(gross);
     await creditForced(round.userId, net, "crash_cashout", round.sessionId);
     await addToJackpot(rake);
+    await revealCrashInDb(round.sessionId, round.crashAt, {
+      outcome: "cashout",
+      cashedAt: round.multiplier,
+    });
     await recordMatchResult({
       winnerId: round.userId,
       loserId: null,
@@ -288,7 +314,10 @@ export async function handleCrashButton(interaction: ButtonInteraction) {
     console.warn("[crash] cashout payout failed, reverting", round.sessionId, err);
     await prisma.gameSession.updateMany({
       where: { id: round.sessionId, status: "settled" },
-      data: { status: "active" },
+      data: {
+        status: "active",
+        payload: crashActivePayload(round.sessionId, round.crashAt),
+      },
     });
     round.ended = false;
     rounds.set(roundId, round);

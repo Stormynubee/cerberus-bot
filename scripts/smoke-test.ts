@@ -21,12 +21,19 @@ import {
   draw,
   freshDeck,
   handValue,
+  hiLoDecisionEv,
   hiLoRankValue,
   hiLoWinMultiplier,
   isBlackjack,
 } from "../src/games/cards.js";
 import { flipCoin, randomInt, shuffle } from "../src/utils/random.js";
 import { crashExpiresAt } from "../src/commands/crash.js";
+import {
+  crashActivePayload,
+  makeCrashCommit,
+  verifyCrashCommit,
+} from "../src/games/crashCommit.js";
+import { slotsGrossRtp, slotsPayout, slotsSpin } from "../src/games/slotsMath.js";
 import {
   applyEvent,
   nextPhase,
@@ -36,6 +43,7 @@ import {
 import { ARENA_EVENTS, fillTemplate } from "../src/hungergames/events.js";
 import { loadCommands } from "../src/client.js";
 import { theme } from "../src/theme.js";
+import { config } from "../src/config.js";
 
 let passed = 0;
 let failed = 0;
@@ -130,6 +138,100 @@ async function main() {
     const at100 = crashExpiresAt(100, from).getTime() - from;
     assert(at100 === Math.ceil(99 / 0.15) * 700 + 90_000, `100x ttl: ${at100}`);
     assert(at100 > 5 * 60 * 1000, "100x must outlive old hard-coded 5m expiry");
+  });
+
+  await test("crash commit hides crashAt until reveal", () => {
+    const sessionId = "sess_crash_commit_test";
+    const crashAt = 12.34;
+    const payload = JSON.parse(crashActivePayload(sessionId, crashAt)) as {
+      commit?: string;
+      crashAt?: number;
+    };
+    assert(typeof payload.commit === "string" && payload.commit.length === 64, "commit hex");
+    assert(payload.crashAt === undefined, "active payload must not include crashAt");
+    assert(verifyCrashCommit(sessionId, crashAt, payload.commit!), "commit verifies");
+    assert(!verifyCrashCommit(sessionId, 12.35, payload.commit!), "wrong crashAt fails");
+    assert(
+      makeCrashCommit(sessionId, crashAt) !== makeCrashCommit("other", crashAt),
+      "session-bound",
+    );
+  });
+
+  await test("slots gross RTP is casino-range (~92%)", () => {
+    const exact = slotsGrossRtp();
+    assert(exact > 0.9 && exact < 0.95, `exact RTP ${exact}`);
+    // Monte Carlo should track exact within noise
+    const bet = 100;
+    let returned = 0;
+    const spins = 40_000;
+    for (let i = 0; i < spins; i++) {
+      returned += slotsPayout(slotsSpin(), bet);
+    }
+    const sample = returned / (spins * bet);
+    assert(Math.abs(sample - exact) < 0.03, `sample RTP ${sample} vs exact ${exact}`);
+    // After 2% rake on wins only, net ≤ gross
+    const netExact = exact * (1 - config.houseRakePercent / 100);
+    assert(netExact > 0.88 && netExact < 0.94, `net RTP ${netExact}`);
+  });
+
+  await test("highlow optimal decision EV is house-edged (~97%)", () => {
+    const seven = { rank: "7" as const, suit: "♥" as const };
+    const rest7 = freshDeck().filter((c) => !(c.rank === "7" && c.suit === "♥"));
+    const highEv = hiLoDecisionEv(rest7, seven, "high");
+    const lowEv = hiLoDecisionEv(rest7, seven, "low");
+    const best = Math.max(highEv, lowEv);
+    assert(best > 0.95 && best < 1.06, `mid EV ${best}`);
+    // Ace "higher" is no longer a flat 1.45 farm
+    const ace = { rank: "A" as const, suit: "♠" as const };
+    const restA = freshDeck().filter((c) => !(c.rank === "A" && c.suit === "♠"));
+    const aceEv = hiLoDecisionEv(restA, ace, "high");
+    assert(aceEv < 1.08, `ace EV still farmable?: ${aceEv}`);
+    assert(hiLoWinMultiplier(restA, ace, "high") < 1.2, "ace mult must stay near true odds");
+  });
+
+  await test("crash settle vs expiry is single-winner (cashout/bust race)", async () => {
+    const { claimSessionStatus } = await import("../src/services/expiry.js");
+    const uid = `crash_race_${Date.now()}`;
+    await ensureUser(uid, "CrashRace");
+    const session = await prisma.gameSession.create({
+      data: {
+        type: "crash",
+        status: "active",
+        wager: 25,
+        playerOneId: uid,
+        payload: crashActivePayload("tmp", 2.5),
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    // Fix commit to real session id
+    await prisma.gameSession.update({
+      where: { id: session.id },
+      data: { payload: crashActivePayload(session.id, 2.5) },
+    });
+
+    const results = await Promise.all([
+      claimSessionStatus(session.id, "active", "settled"),
+      claimSessionStatus(session.id, "active", "expired"),
+      claimSessionStatus(session.id, "active", "settled"),
+    ]);
+    const wins = results.filter(Boolean).length;
+    assert(wins === 1, `expected exactly one winner, got ${results.join(",")}`);
+
+    const mid = await prisma.gameSession.findUnique({ where: { id: session.id } });
+    assert(mid?.payload && !mid.payload.includes('"crashAt"'), "pre-reveal has no crashAt");
+    // Simulate post-settle reveal
+    const { crashRevealedPayload } = await import("../src/games/crashCommit.js");
+    await prisma.gameSession.update({
+      where: { id: session.id },
+      data: { payload: crashRevealedPayload(session.id, 2.5, { outcome: "bust" }) },
+    });
+    const done = await prisma.gameSession.findUnique({ where: { id: session.id } });
+    const parsed = JSON.parse(done!.payload) as { crashAt?: number; commit?: string };
+    assert(parsed.crashAt === 2.5, "revealed after settle");
+    assert(verifyCrashCommit(session.id, 2.5, parsed.commit!), "reveal commit ok");
+
+    await prisma.gameSession.deleteMany({ where: { id: session.id } });
+    await prisma.user.delete({ where: { id: uid } }).catch(() => undefined);
   });
 
   await test("event catalog non-empty + template fill", () => {

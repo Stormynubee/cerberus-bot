@@ -27,6 +27,11 @@ export const config = {
   challengeTtlSeconds: intEnv("CHALLENGE_TTL_SECONDS", 60),
   /** Soft house rake on PvE wins (percent) — feeds progressive jackpot */
   houseRakePercent: 2,
+  /** HMAC secret for crash point commitments (defaults to bot token). */
+  crashCommitSecret:
+    process.env.CRASH_COMMIT_SECRET?.trim() ||
+    process.env.DISCORD_TOKEN?.trim() ||
+    "greekbot-crash-commit-dev",
   /** Inferno Games (Hunger Games) pacing */
   hgEventDelayMs: intEnv("HG_EVENT_DELAY_MS", 7500),
   hgMinPlayers: intEnv("HG_MIN_PLAYERS", 4),
