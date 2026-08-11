@@ -1,4 +1,4 @@
-import { accessSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -11,7 +11,6 @@ import {
   EmbedBuilder,
   MessageFlags,
 } from "discord.js";
-import { AVATAR_PATH } from "../services/branding.js";
 import { theme } from "../theme.js";
 import { baseEmbed } from "../utils/embeds.js";
 
@@ -131,24 +130,16 @@ export const TABS: Record<HelpTab, TabContent> = {
   },
 };
 
-function logoAvailable(): boolean {
-  try {
-    accessSync(AVATAR_PATH);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function helpEmbed(tab: HelpTab): EmbedBuilder {
+export function helpEmbed(tab: HelpTab, botAvatarUrl?: string | null): EmbedBuilder {
   const t = TABS[tab];
   const steps = t.steps.map((s, i) => `**${i + 1}.** ${s}`).join("\n");
   const embed = baseEmbed(t.color)
     .setTitle(t.title)
-    .setDescription(`${t.body}\n\n### How to play\n${steps}\n\n**Try next:** ${t.tryNext}`);
+    .setDescription(`${t.body}\n\n**How to play**\n${steps}\n\n**Try next:** ${t.tryNext}`);
 
-  if (logoAvailable()) {
-    embed.setThumbnail("attachment://greekbot-avatar.png");
+  // Prefer Discord CDN avatar — never attach the multi‑MB local PNG (causes /help timeouts).
+  if (botAvatarUrl) {
+    embed.setThumbnail(botAvatarUrl);
   }
   if (existsSync(path.join(GIF_DIR, t.gif))) {
     embed.setImage(`attachment://${t.gif}`);
@@ -158,9 +149,6 @@ export function helpEmbed(tab: HelpTab): EmbedBuilder {
 
 export function helpFiles(tab: HelpTab): AttachmentBuilder[] {
   const files: AttachmentBuilder[] = [];
-  if (logoAvailable()) {
-    files.push(new AttachmentBuilder(AVATAR_PATH, { name: "greekbot-avatar.png" }));
-  }
   const gifPath = path.join(GIF_DIR, TABS[tab].gif);
   if (existsSync(gifPath)) {
     files.push(new AttachmentBuilder(gifPath, { name: TABS[tab].gif }));
@@ -194,12 +182,28 @@ export async function replyHelp(
   interaction: ChatInputCommandInteraction,
   tab: HelpTab = "home",
 ) {
-  await interaction.reply({
-    embeds: [helpEmbed(tab)],
-    components: helpRows(tab),
-    files: helpFiles(tab),
-    flags: MessageFlags.Ephemeral,
-  });
+  // Ack within 3s — GIF upload can be slow on cold hosts.
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  const avatar = interaction.client.user?.displayAvatarURL({ size: 128 }) ?? null;
+  try {
+    await interaction.editReply({
+      embeds: [helpEmbed(tab, avatar)],
+      components: helpRows(tab),
+      files: helpFiles(tab),
+    });
+  } catch (err) {
+    console.warn("[help] reply with gif failed, falling back to text-only", err);
+    const fallback = helpEmbed(tab, avatar);
+    fallback.setImage(null);
+    await interaction.editReply({
+      embeds: [fallback],
+      components: helpRows(tab),
+      files: [],
+    });
+  }
 }
 
 export async function handleHelpButton(interaction: ButtonInteraction) {
@@ -213,9 +217,21 @@ export async function handleHelpButton(interaction: ButtonInteraction) {
     return;
   }
 
-  await interaction.update({
-    embeds: [helpEmbed(tab)],
-    components: helpRows(tab),
-    files: helpFiles(tab),
-  });
+  const avatar = interaction.client.user?.displayAvatarURL({ size: 128 }) ?? null;
+  try {
+    await interaction.update({
+      embeds: [helpEmbed(tab, avatar)],
+      components: helpRows(tab),
+      files: helpFiles(tab),
+    });
+  } catch (err) {
+    console.warn("[help] tab update failed", err);
+    await interaction
+      .update({
+        embeds: [helpEmbed(tab, avatar)],
+        components: helpRows(tab),
+        files: [],
+      })
+      .catch(() => undefined);
+  }
 }
