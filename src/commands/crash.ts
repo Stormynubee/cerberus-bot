@@ -123,11 +123,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ],
       components: [row],
     });
-    const msg = await interaction.fetchReply();
-    await prisma.gameSession.update({
-      where: { id: session.id },
-      data: { messageId: msg.id },
-    });
+    const msg = await interaction.fetchReply().catch(() => null);
+    if (msg) {
+      await prisma.gameSession.update({
+        where: { id: session.id },
+        data: { messageId: msg.id },
+      });
+    }
 
     rounds.set(roundId, {
       sessionId: session.id,
@@ -146,8 +148,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       mult = Math.round((mult + 0.15) * 100) / 100;
       if (mult >= crashAt) break;
       round.multiplier = mult;
-      await msg
-        .edit({
+      await interaction
+        .editReply({
           embeds: [
             baseEmbed(theme.colors.inferno)
               .setTitle("🚀 Inferno Rocket")
@@ -176,7 +178,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       loserId: interaction.user.id,
       amountWon: 0,
     });
-    await msg.edit({
+    await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.danger)
           .setTitle("💥 Rocket crashed!")
@@ -187,6 +189,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       components: [],
     });
   } catch (err) {
+    console.error("[crash]", err);
     const msg = err instanceof EconomyError ? err.message : "Crash failed.";
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ embeds: [errorEmbed(msg)] }).catch(async () => {

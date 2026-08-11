@@ -3,7 +3,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import { animateSteps } from "../services/animation.js";
+import { animateInteraction } from "../services/animation.js";
 import {
   addToJackpot,
   applyRake,
@@ -33,8 +33,7 @@ const PAY: Record<string, number> = {
 };
 
 function spin(): [string, string, string] {
-  const pick = () => randomChoice(SYMBOLS);
-  return [pick(), pick(), pick()];
+  return [randomChoice(SYMBOLS), randomChoice(SYMBOLS), randomChoice(SYMBOLS)];
 }
 
 function payout(reels: [string, string, string], bet: number): number {
@@ -55,9 +54,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("amount", true);
   let debited = false;
   let settled = false;
+
   try {
     assertBetAmount(amount);
     await ackCommand(interaction);
+
     await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.night)
@@ -71,12 +72,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     debited = true;
 
     const reels = spin();
-    const msg = await interaction.fetchReply();
-    await animateSteps(
-      msg,
+    await animateInteraction(
+      interaction,
       [
-        { embeds: [baseEmbed(theme.colors.night).setTitle("Inferno Slots").setDescription(`🎰 | ${reels[0]} | ❓ | ❓ |`)] },
-        { embeds: [baseEmbed(theme.colors.night).setTitle("Inferno Slots").setDescription(`🎰 | ${reels[0]} | ${reels[1]} | ❓ |`)] },
+        {
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("Inferno Slots")
+              .setDescription(`🎰 | ${reels[0]} | ❓ | ❓ |`),
+          ],
+        },
+        {
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("Inferno Slots")
+              .setDescription(`🎰 | ${reels[0]} | ${reels[1]} | ❓ |`),
+          ],
+        },
         {
           embeds: [
             baseEmbed(theme.colors.night)
@@ -85,7 +97,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           ],
         },
       ],
-      450,
+      400,
     );
 
     const win = payout(reels, amount);
@@ -97,10 +109,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       await recordMatchResult({
         winnerId: interaction.user.id,
         loserId: null,
-        amountWon: net - amount,
+        amountWon: Math.max(0, net - amount),
       });
-      await maybeAnnounceBigWin(interaction, net - amount, "slots");
-      await msg.edit({
+      await maybeAnnounceBigWin(interaction, net - amount, "slots").catch(() => undefined);
+      await interaction.editReply({
         embeds: [
           baseEmbed(theme.colors.success)
             .setTitle(`${theme.emojis.fire} Jackpot line!`)
@@ -118,7 +130,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         loserId: interaction.user.id,
         amountWon: 0,
       });
-      await msg.edit({
+      await interaction.editReply({
         embeds: [
           baseEmbed(theme.colors.danger)
             .setTitle("House keeps the ash")
@@ -129,18 +141,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     }
   } catch (err) {
+    console.error("[slots]", err);
     if (debited && !settled) {
       await creditForced(interaction.user.id, amount, "slots_refund_error").catch((e) =>
         console.warn("[slots] refund failed", e),
       );
     }
-    const msg = err instanceof EconomyError ? err.message : "Slots failed.";
+    const text =
+      err instanceof EconomyError
+        ? err.message
+        : err instanceof Error
+          ? `Slots failed: ${err.message}`
+          : "Slots failed.";
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ embeds: [errorEmbed(msg)] }).catch(async () => {
-        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ embeds: [errorEmbed(text)] }).catch(async () => {
+        await interaction
+          .followUp({ embeds: [errorEmbed(text)], flags: MessageFlags.Ephemeral })
+          .catch(() => undefined);
       });
     } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      await interaction
+        .reply({ embeds: [errorEmbed(text)], flags: MessageFlags.Ephemeral })
+        .catch(() => undefined);
     }
   }
 }

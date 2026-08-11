@@ -3,7 +3,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import { animateSteps } from "../services/animation.js";
+import { animateInteraction } from "../services/animation.js";
 import {
   addToJackpot,
   applyRake,
@@ -68,14 +68,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const result = randomInt(37);
     const color = colorOf(result);
 
-    const msg = await interaction.fetchReply();
-    await animateSteps(
-      msg,
+    await animateInteraction(
+      interaction,
       [
-        { embeds: [baseEmbed(theme.colors.night).setTitle("🎡 Roulette").setDescription("Spinning… 🔴⚫")] },
-        { embeds: [baseEmbed(theme.colors.night).setTitle("🎡 Roulette").setDescription("Ball bouncing…")] },
+        {
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("🎡 Roulette")
+              .setDescription("Spinning… 🔴⚫"),
+          ],
+        },
+        {
+          embeds: [
+            baseEmbed(theme.colors.night)
+              .setTitle("🎡 Roulette")
+              .setDescription("Ball bouncing…"),
+          ],
+        },
       ],
-      500,
+      450,
     );
 
     const won = bet === color;
@@ -89,10 +100,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       await recordMatchResult({
         winnerId: interaction.user.id,
         loserId: null,
-        amountWon: net - amount,
+        amountWon: Math.max(0, net - amount),
       });
-      await maybeAnnounceBigWin(interaction, net - amount, "roulette");
-      await msg.edit({
+      await maybeAnnounceBigWin(interaction, net - amount, "roulette").catch(() => undefined);
+      await interaction.editReply({
         embeds: [
           baseEmbed(theme.colors.success)
             .setTitle(`Landed ${result} (${color})`)
@@ -107,7 +118,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         loserId: interaction.user.id,
         amountWon: 0,
       });
-      await msg.edit({
+      await interaction.editReply({
         embeds: [
           baseEmbed(theme.colors.danger)
             .setTitle(`Landed ${result} (${color})`)
@@ -116,18 +127,28 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     }
   } catch (err) {
+    console.error("[roulette]", err);
     if (debited && !settled) {
       await creditForced(interaction.user.id, amount, "roulette_refund_error").catch((e) =>
         console.warn("[roulette] refund failed", e),
       );
     }
-    const msg = err instanceof EconomyError ? err.message : "Roulette failed.";
+    const text =
+      err instanceof EconomyError
+        ? err.message
+        : err instanceof Error
+          ? `Roulette failed: ${err.message}`
+          : "Roulette failed.";
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ embeds: [errorEmbed(msg)] }).catch(async () => {
-        await interaction.followUp({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ embeds: [errorEmbed(text)] }).catch(async () => {
+        await interaction
+          .followUp({ embeds: [errorEmbed(text)], flags: MessageFlags.Ephemeral })
+          .catch(() => undefined);
       });
     } else {
-      await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
+      await interaction
+        .reply({ embeds: [errorEmbed(text)], flags: MessageFlags.Ephemeral })
+        .catch(() => undefined);
     }
   }
 }

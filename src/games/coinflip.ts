@@ -10,7 +10,7 @@ import {
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { withUserLock } from "../locks.js";
-import { animateSteps } from "../services/animation.js";
+import { animateInteraction } from "../services/animation.js";
 import { claimSessionStatus } from "../services/expiry.js";
 import {
   addToJackpot,
@@ -65,21 +65,22 @@ export async function playCoinflipVsHouse(
 
   const result = flipCoin();
   const won = result === choice;
-  const msg = await interaction.fetchReply();
 
-  await animateSteps(
-    msg,
-    spinFrames(choice).slice(1).map((text) => ({
-      embeds: [
-        baseEmbed(theme.colors.night)
-          .setTitle(`${theme.emojis.spin} HellCat Spin`)
-          .setDescription(text)
-          .addFields(
-            { name: "Wager", value: formatCoins(amount), inline: true },
-            { name: "Your call", value: choice.toUpperCase(), inline: true },
-          ),
-      ],
-    })),
+  await animateInteraction(
+    interaction,
+    spinFrames(choice)
+      .slice(1)
+      .map((text) => ({
+        embeds: [
+          baseEmbed(theme.colors.night)
+            .setTitle(`${theme.emojis.spin} HellCat Spin`)
+            .setDescription(text)
+            .addFields(
+              { name: "Wager", value: formatCoins(amount), inline: true },
+              { name: "Your call", value: choice.toUpperCase(), inline: true },
+            ),
+        ],
+      })),
     500,
   );
 
@@ -91,10 +92,10 @@ export async function playCoinflipVsHouse(
     await recordMatchResult({
       winnerId: interaction.user.id,
       loserId: null,
-      amountWon: net - amount,
+      amountWon: Math.max(0, net - amount),
     });
 
-    await msg.edit({
+    await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.success)
           .setTitle(`${theme.emojis.fire} ${result.toUpperCase()} — You win!`)
@@ -110,7 +111,7 @@ export async function playCoinflipVsHouse(
       loserId: interaction.user.id,
       amountWon: 0,
     });
-    await msg.edit({
+    await interaction.editReply({
       embeds: [
         baseEmbed(theme.colors.danger)
           .setTitle(`${theme.emojis.skull} ${result.toUpperCase()} — Burned`)
