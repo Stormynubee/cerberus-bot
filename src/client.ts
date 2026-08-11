@@ -5,6 +5,7 @@ import {
   GatewayIntentBits,
   Interaction,
   MessageFlags,
+  PermissionFlagsBits,
   REST,
   Routes,
 } from "discord.js";
@@ -47,17 +48,28 @@ export async function loadCommands(): Promise<Collection<string, BotCommand>> {
 }
 
 export async function registerCommands(commands: Collection<string, BotCommand>) {
-  const body = [...commands.values()].map((c) => c.data.toJSON());
+  // Force clear Discord default permission locks so @everyone can use public commands.
+  // /admin stays Manage Server only. Server owners can still override in Integrations UI.
+  const body = [...commands.values()].map((c) => {
+    const json = c.data.toJSON() as Record<string, unknown>;
+    if (c.data.name === "admin") {
+      json.default_member_permissions = String(PermissionFlagsBits.ManageGuild);
+    } else {
+      json.default_member_permissions = null;
+    }
+    json.dm_permission = false;
+    return json;
+  });
   const rest = new REST({ version: "10" }).setToken(config.token());
 
   if (config.guildId) {
     await rest.put(Routes.applicationGuildCommands(config.clientId(), config.guildId), {
       body,
     });
-    console.log(`[commands] Registered ${body.length} guild commands`);
+    console.log(`[commands] Registered ${body.length} guild commands (public + admin)`);
   } else {
     await rest.put(Routes.applicationCommands(config.clientId()), { body });
-    console.log(`[commands] Registered ${body.length} global commands`);
+    console.log(`[commands] Registered ${body.length} global commands (public + admin)`);
   }
 }
 

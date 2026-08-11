@@ -25,6 +25,8 @@ function isAdmin(interaction: ChatInputCommandInteraction): boolean {
 export const data = new SlashCommandBuilder()
   .setName("admin")
   .setDescription("Cerberus economy & server tools (Manage Server)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .setDMPermission(false)
   .addSubcommand((sc) =>
     sc
       .setName("grant")
