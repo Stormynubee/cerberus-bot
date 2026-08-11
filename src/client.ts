@@ -62,15 +62,66 @@ export async function registerCommands(commands: Collection<string, BotCommand>)
     return json;
   });
   const rest = new REST({ version: "10" }).setToken(config.token());
+  const clientId = config.clientId();
 
   if (config.guildId) {
-    await rest.put(Routes.applicationGuildCommands(config.clientId(), config.guildId), {
+    await rest.put(Routes.applicationGuildCommands(clientId, config.guildId), {
       body,
     });
     console.log(`[commands] Registered ${body.length} guild commands (public + admin)`);
+    await warnLockedCommandPermissions(rest, clientId, config.guildId);
   } else {
-    await rest.put(Routes.applicationCommands(config.clientId()), { body });
+    await rest.put(Routes.applicationCommands(clientId), { body });
     console.log(`[commands] Registered ${body.length} global commands (public + admin)`);
+  }
+}
+
+/**
+ * Discord Integrations can allow-list roles for the whole app. Bots cannot clear that
+ * (needs a user Bearer token). Detect and log so owners fix Server Settings → Integrations.
+ */
+async function warnLockedCommandPermissions(
+  rest: REST,
+  clientId: string,
+  guildId: string,
+): Promise<void> {
+  try {
+    const rows = (await rest.get(
+      Routes.guildApplicationCommandsPermissions(clientId, guildId),
+    )) as Array<{
+      id: string;
+      permissions: Array<{ id: string; type: number; permission: boolean }>;
+    }>;
+
+    const appWide = rows.find((r) => r.id === clientId);
+    if (!appWide?.permissions?.length) return;
+
+    const allowsEveryone = appWide.permissions.some(
+      (p) => p.type === 1 && p.id === guildId && p.permission === true,
+    );
+    const allowedRoles = appWide.permissions
+      .filter((p) => p.type === 1 && p.permission === true)
+      .map((p) => p.id);
+
+    if (!allowsEveryone) {
+      console.warn(
+        "[commands] ⚠️  Discord Integrations is locking GreekBot slash commands.",
+      );
+      console.warn(
+        `[commands] Only these roles are allowed right now: ${allowedRoles.join(", ") || "(none)"}`,
+      );
+      console.warn(
+        "[commands] New / unverified members will NOT see /daily, /slots, etc.",
+      );
+      console.warn(
+        "[commands] FIX (owner): Server Settings → Integrations → GreekBot → Commands",
+      );
+      console.warn(
+        "[commands] → Roles & Members → enable @everyone (or Clear overrides), then Ctrl+R Discord.",
+      );
+    }
+  } catch (err) {
+    console.warn("[commands] Could not read command permission overrides", err);
   }
 }
 

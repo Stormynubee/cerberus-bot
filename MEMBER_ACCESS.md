@@ -1,57 +1,37 @@
-# Make GreekBot usable for everyone (not just admins)
+# Why new accounts can’t see GreekBot slash commands
 
-Public commands are registered with **no permission lock** (`default_member_permissions = null`).
-`/admin` stays **Manage Server** only.
+This is **not** a channel “Use Application Commands” issue (those are already on for `@everyone` and `verified`).
 
-This server’s **Verified** role id: `1500433834456645725`  
-(set as Arena Master on boot so verified members can host Inferno Games)
+## Root cause (confirmed via Discord API)
 
-Inferno Games hosting is also open to **@everyone** in bot code (`PUBLIC_ARENA_HOST=true`).
+GreekBot has an **Integrations allow-list** on your server that only permits the **verified** role:
 
-## 1. Integrations (required if Discord still says “no permission”)
+- Guild: `1500433834456645723`
+- Allowed role only: `1500433834456645725` (verified)
+- `@everyone` is **not** on that allow-list
 
-Discord stores role overrides separately from bot code. Clear them:
+So a brand-new account (no verified role) can see Wordle / built-in commands, but **GreekBot never appears** in the `/` menu.
 
-1. Server Settings → **Integrations** → **GreekBot**
-2. Under **Commands** → **Roles & Members**
-3. Enable **@everyone**
-4. Enable role **Verified** (`1500433834456645725`) if listed
-5. Turn **off** any “Administrators only” / Manage Server lock on the whole bot
-6. If stuck: **Clear overrides** / reset command permissions, then wait ~1 minute
+Bots **cannot** clear this with a bot token. A server owner/admin must change it in Discord.
 
-Bots cannot rewrite those Integrations toggles with a normal bot token — an admin must open them once in the Discord UI.
+## Fix (30 seconds — do this as owner)
 
-## 2. Channel permissions
+1. Open your server → **Server Settings**
+2. **Integrations** → click **GreekBot**
+3. Find **Commands** / **Roles & Members** (or “Who can use this bot”)
+4. Do **one** of these:
+   - **Clear overrides** / **Reset** command permissions, **or**
+   - Add **@everyone** with **Allow**, and keep **verified** if you want
+5. Save
+6. On the test account: press `Ctrl+R` (reload Discord) and type `/` again  
+   You should see **GreekBot** with `/daily`, `/slots`, `/hungergames`, etc.
 
-In every play channel:
+### What it should look like
 
-**@everyone** (and/or Verified):
+- Commands usable by: **Everyone** (or `@everyone` + `verified`)
+- Not: only `verified` / only admins
 
-- View Channel, Send Messages, Embed Links, Attach Files
-- **Use Application Commands** ← critical
-- Read Message History
+## After that
 
-**GreekBot** role: View, Send, Embed Links, Attach Files, Use External Emojis, Read History
-
-## 3. What members can use
-
-| Everyone / Verified | Manage Server only |
-|---------------------|--------------------|
-| `/help` `/hell` `/daily` `/balance` `/tip` | `/admin …` |
-| `/leaderboard` `/jackpot` `/profile` | |
-| `/slots` `/roulette` `/crash` `/highlow` | |
-| `/coinflip` `/blackjack` `/rps` | |
-| `/hungergames new` `/setup` `/status` | |
-| Join / Leave / Revive / Start / Cancel Inferno | |
-
-## 4. After deploy
-
-1. Wait for Render redeploy
-2. Restart Discord (`Ctrl+R`) or wait ~1 minute
-3. Type `/` — pick commands from the menu (don’t type them as plain chat)
-
-## Quick test (as a Verified member, not admin)
-
-1. `/daily`
-2. `/hungergames setup` (should show defaults)
-3. `/slots amount:10`
+Verified members and brand-new members can both use public slash commands.  
+`/admin` still requires **Manage Server** (intentional).
