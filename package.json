@@ -9,6 +9,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:prod": "node scripts/migrate-and-start.mjs",
+    "laptop:keepalive": "node scripts/laptop-keepalive.mjs",
+    "laptop:failover": "node scripts/laptop-failover.mjs",
     "deploy-commands": "tsx src/deploy-commands.ts",
     "gifs:help": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-help-gifs.ps1",
     "test:smoke": "tsx scripts/smoke-test.ts",

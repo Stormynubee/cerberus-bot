@@ -21,9 +21,16 @@ Create a free cron at https://cron-job.org that GETs every **5 minutes**:
 
 That reduces spin-downs but **first command after sleep can still fail** during cold start (30–60s).
 
-## Never run the bot locally with the production token
+## Never run the bot locally with the production token (at the same time as Render)
 
-Discord allows **one** gateway session per token. Logging in locally kicks Render offline → everyone gets "application did not respond". Use a separate test bot token for local work.
+Discord allows **one** gateway session per token. Logging in locally kicks Render offline → everyone gets "application did not respond".
+
+### Hybrid Free setup (Render + laptop)
+
+- **Recommended:** `npm run laptop:keepalive` on your laptop — only pings Render so it stays awake (does not log into Discord).
+- **Backup:** `npm run laptop:failover` — starts the bot on your laptop only when Render is down.
+
+See [HYBRID_HOSTING.md](./HYBRID_HOSTING.md).
 
 ## Env vars
 
