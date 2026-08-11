@@ -19,7 +19,26 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((sc) =>
     sc
       .setName("setup")
-      .setDescription("Set the server default entry fee (and max players) for Inferno Games")
+      .setDescription("Set Inferno Games defaults (win prize, revives, entry fee)")
+      .addIntegerOption((o) =>
+        o
+          .setName("win_prize")
+          .setDescription("HCC paid to the last tribute standing (default 250)")
+          .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("revive_cost")
+          .setDescription("HCC cost to revive when dead (default 50)")
+          .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("max_revives")
+          .setDescription("Max revives per tribute per round (default 2)")
+          .setMinValue(0)
+          .setMaxValue(10),
+      )
       .addIntegerOption((o) =>
         o
           .setName("entry_fee")
@@ -61,15 +80,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await ackCommand(interaction);
   try {
     if (sub === "setup") {
-      const fee = interaction.options.getInteger("entry_fee");
-      const max = interaction.options.getInteger("max_players");
-      await setupInfernoGames(interaction, fee, max);
+      await setupInfernoGames(interaction, {
+        entryFee: interaction.options.getInteger("entry_fee"),
+        maxPlayers: interaction.options.getInteger("max_players"),
+        winPrize: interaction.options.getInteger("win_prize"),
+        reviveCost: interaction.options.getInteger("revive_cost"),
+        maxRevives: interaction.options.getInteger("max_revives"),
+      });
       return;
     }
     if (sub === "new") {
       const defaults = interaction.guildId
         ? await getHgDefaults(interaction.guildId)
-        : { entryFee: 0, maxPlayers: config.hgMaxPlayers };
+        : {
+            entryFee: 0,
+            maxPlayers: config.hgMaxPlayers,
+            winPrize: config.hgDefaultWinPrize,
+            reviveCost: config.hgDefaultReviveCost,
+            maxRevives: config.hgDefaultMaxRevives,
+          };
       const fee = interaction.options.getInteger("entry_fee") ?? defaults.entryFee;
       const max = interaction.options.getInteger("max_players") ?? defaults.maxPlayers;
       await createInfernoGames(interaction, fee, max);

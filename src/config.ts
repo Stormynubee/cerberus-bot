@@ -31,5 +31,13 @@ export const config = {
   hgEventDelayMs: intEnv("HG_EVENT_DELAY_MS", 7500),
   hgMinPlayers: intEnv("HG_MIN_PLAYERS", 4),
   hgMaxPlayers: intEnv("HG_MAX_PLAYERS", 24),
+  /** House-funded Inferno Games winner prize (seeded into the pool). */
+  hgDefaultWinPrize: intEnv("HG_DEFAULT_WIN_PRIZE", 250),
+  /** Paid revive cost during a live Inferno Games round. */
+  hgDefaultReviveCost: intEnv("HG_DEFAULT_REVIVE_COST", 50),
+  /** Max paid revives per tribute per round. */
+  hgDefaultMaxRevives: intEnv("HG_DEFAULT_MAX_REVIVES", 2),
+  /** Seconds dead tributes have to buy a revive after each casualty report. */
+  hgReviveWindowMs: intEnv("HG_REVIVE_WINDOW_MS", 20_000),
   bigWinThreshold: intEnv("BIG_WIN_THRESHOLD", 500),
 };

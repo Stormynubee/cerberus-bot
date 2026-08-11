@@ -78,14 +78,20 @@ model Jackpot {
 }
 
 model GuildSettings {
-  guildId            String @id
-  bigWinChannelId    String?
-  bigWinThreshold    Int    @default(500)
-  arenaMasterRole    String?
+  guildId             String @id
+  bigWinChannelId     String?
+  bigWinThreshold     Int    @default(500)
+  arenaMasterRole     String?
   /// Default Inferno Games entry fee when `/hungergames new` omits entry_fee (0 = free).
-  hgDefaultEntryFee  Int    @default(0)
+  hgDefaultEntryFee   Int    @default(0)
   /// Default max tributes when `/hungergames new` omits max_players.
-  hgDefaultMaxPlayers Int   @default(24)
+  hgDefaultMaxPlayers Int    @default(24)
+  /// House-funded prize paid to the last tribute standing (seeded into prize pool).
+  hgDefaultWinPrize   Int    @default(250)
+  /// Cost in HCC for a dead tribute to revive during a live round.
+  hgDefaultReviveCost Int    @default(50)
+  /// Max paid revives per tribute per round.
+  hgDefaultMaxRevives Int    @default(2)
 }
 
 model ArenaGame {
@@ -100,6 +106,9 @@ model ArenaGame {
   entryFee   Int            @default(0)
   prizePool  Int            @default(0)
   maxPlayers Int            @default(24)
+  winPrize   Int            @default(250)
+  reviveCost Int            @default(50)
+  maxRevives Int            @default(2)
   winnerId   String?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
@@ -119,6 +128,7 @@ model ArenaTribute {
   alive       Boolean   @default(true)
   infected    Boolean   @default(false)
   kills       Int       @default(0)
+  revivesUsed Int       @default(0)
   weapon      String    @default("none")
   diedDay     Int?
   diedPhase   String?

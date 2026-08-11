@@ -103,13 +103,14 @@ export const TABS: Record<HelpTab, TabContent> = {
     body:
       "Hunger-Games style arena with **cool HellCat** chaos: wolf bites, traps, night infection, casualty reports.",
     steps: [
-      "Mods: `/hungergames setup entry_fee:…` — set default price",
-      "Host: `/hungergames new` (uses server default, or override entry_fee)",
+      "Mods: `/hungergames setup win_prize:250 revive_cost:50 max_revives:2`",
+      "Host: `/hungergames new` (uses server defaults)",
       "Everyone taps **Join** on the signup message",
       "Host / Arena Master / mods tap **Start** (min players required)",
+      "Dead tributes can **Revive** (default 50 HCC, max 2) between phases",
       "Phases: Bloodbath → Day/Night → Feast → Finale",
       "`/hungergames status` — alive / dead / infected mid-match",
-      "Last tribute standing wins the prize pool",
+      "Last tribute standing wins the prize pool (default 250 HCC base)",
     ],
     tryNext: "Ask a mod to open `/hungergames new`",
   },
