@@ -431,6 +431,37 @@ async function main() {
     }
   });
 
+  await test("tips only go to owner, admin, or mods", async () => {
+    const { memberCanReceiveTips } = await import("../src/services/staff.js");
+    const base = {
+      ownerId: "owner",
+      userId: "user",
+      bot: false,
+      administrator: false,
+      manageGuild: false,
+      manageMessages: false,
+      kickMembers: false,
+      banMembers: false,
+      moderateMembers: false,
+    };
+    assert(memberCanReceiveTips({ ...base, userId: "owner" }), "owner can receive");
+    assert(memberCanReceiveTips({ ...base, administrator: true }), "admin can receive");
+    assert(memberCanReceiveTips({ ...base, manageGuild: true }), "manage server can receive");
+    assert(memberCanReceiveTips({ ...base, manageMessages: true }), "chat mod can receive");
+    assert(memberCanReceiveTips({ ...base, kickMembers: true }), "kick mod can receive");
+    assert(memberCanReceiveTips({ ...base, banMembers: true }), "ban mod can receive");
+    assert(memberCanReceiveTips({ ...base, moderateMembers: true }), "timeout mod can receive");
+    assert(!memberCanReceiveTips(base), "regular member cannot receive");
+    assert(
+      !memberCanReceiveTips({ ...base, userId: "owner", bot: true }),
+      "bots cannot receive even if owner id matches",
+    );
+    assert(
+      !memberCanReceiveTips({ ...base, administrator: true, bot: true }),
+      "admin bots cannot receive",
+    );
+  });
+
   await test("prefix ! parser binds slash options", async () => {
     const {
       tokenize,

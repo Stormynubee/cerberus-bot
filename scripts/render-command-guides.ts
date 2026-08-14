@@ -339,7 +339,7 @@ function page1(): Bitmap {
   y = cmd(b, y, "/help  /hell", "this guide");
   y = cmd(b, y, "/daily", "claim + streak");
   y = cmd(b, y, "/balance", "your HCC");
-  y = cmd(b, y, "/tip @user amt", "send HCC");
+  y = cmd(b, y, "/tip @staff amt", "owner/admin/mod");
   y = cmd(b, y, "/leaderboard", "top wallets");
   y = cmd(b, y, "/profile", "wins / losses");
   y = cmd(b, y, "/jackpot", "house pot");

@@ -26,7 +26,7 @@ Enable **Message Content Intent** in the Discord Developer Portal (Bot → Privi
 | `/help` | Guided help with steps + demo GIFs (also `/hell`) |
 | `/balance` | Wallet |
 | `/daily` | Daily claim + streak bonus |
-| `/tip` | Send HCC |
+| `/tip` | Send HCC to the server owner, an admin, or a mod only |
 | `/leaderboard` | Top wallets + jackpot |
 | `/profile` | Combat stats |
 | `/jackpot` | Progressive jackpot |

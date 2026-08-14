@@ -57,7 +57,7 @@ export const TABS: Record<HelpTab, TabContent> = {
     steps: [
       "`/daily` — claim once per day (streak bonus)",
       "`/balance` — see your stack",
-      "`/tip @user amount` — send HCC to a friend",
+      "`/tip @staff amount` — send HCC to owner / admin / mod only",
       "`/leaderboard` — top wallets + jackpot peek",
       "`/profile` — wins, losses, streaks",
       "`/jackpot` — progressive house pot",
