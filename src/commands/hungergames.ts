@@ -1,6 +1,7 @@
 import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
+  SlashCommandSubcommandBuilder,
 } from "discord.js";
 import { EconomyError } from "../services/wallet.js";
 import { config } from "../config.js";
@@ -13,45 +14,56 @@ import {
   statusInfernoGames,
 } from "../hungergames/runner.js";
 
+function addPricingOptions(sc: SlashCommandSubcommandBuilder) {
+  return sc
+    .addIntegerOption((o) =>
+      o
+        .setName("win_prize")
+        .setDescription("HCC paid to the last tribute standing (default 250)")
+        .setMinValue(0),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("revive_cost")
+        .setDescription("HCC cost to revive when dead (default 50)")
+        .setMinValue(0),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("max_revives")
+        .setDescription("Max revives per tribute per round (default 2)")
+        .setMinValue(0)
+        .setMaxValue(10),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("entry_fee")
+        .setDescription("Default HellCatCoins entry fee (0 = free)")
+        .setMinValue(0),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("max_players")
+        .setDescription(`Default max tributes (${config.hgMinPlayers}–${config.hgMaxPlayers})`)
+        .setMinValue(config.hgMinPlayers)
+        .setMaxValue(config.hgMaxPlayers),
+    );
+}
+
 export const data = new SlashCommandBuilder()
   .setName("hungergames")
   .setDescription("Inferno Games — Hunger Games battle royale for the server")
   .addSubcommand((sc) =>
-    sc
-      .setName("setup")
-      .setDescription("Set Inferno Games defaults (win prize, revives, entry fee)")
-      .addIntegerOption((o) =>
-        o
-          .setName("win_prize")
-          .setDescription("HCC paid to the last tribute standing (default 250)")
-          .setMinValue(0),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("revive_cost")
-          .setDescription("HCC cost to revive when dead (default 50)")
-          .setMinValue(0),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("max_revives")
-          .setDescription("Max revives per tribute per round (default 2)")
-          .setMinValue(0)
-          .setMaxValue(10),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("entry_fee")
-          .setDescription("Default HellCatCoins entry fee (0 = free)")
-          .setMinValue(0),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("max_players")
-          .setDescription(`Default max tributes (${config.hgMinPlayers}–${config.hgMaxPlayers})`)
-          .setMinValue(config.hgMinPlayers)
-          .setMaxValue(config.hgMaxPlayers),
-      ),
+    addPricingOptions(
+      sc.setName("setup").setDescription("Set Inferno Games defaults (win prize, revives, entry fee)"),
+    ),
+  )
+  .addSubcommand((sc) =>
+    addPricingOptions(
+      sc
+        .setName("pricing")
+        .setDescription("Same as setup — set win prize, revive cost, entry fee, max players"),
+    ),
   )
   .addSubcommand((sc) =>
     sc
@@ -62,6 +74,25 @@ export const data = new SlashCommandBuilder()
           .setName("entry_fee")
           .setDescription("Override entry fee for this round (omit = server default)")
           .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("win_prize")
+          .setDescription("Override host-funded winner prize for this round")
+          .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("revive_cost")
+          .setDescription("Override revive cost for this round")
+          .setMinValue(0),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName("max_revives")
+          .setDescription("Override max revives per tribute for this round")
+          .setMinValue(0)
+          .setMaxValue(10),
       )
       .addIntegerOption((o) =>
         o
@@ -79,7 +110,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
   await ackCommand(interaction);
   try {
-    if (sub === "setup") {
+    if (sub === "setup" || sub === "pricing") {
       await setupInfernoGames(interaction, {
         entryFee: interaction.options.getInteger("entry_fee"),
         maxPlayers: interaction.options.getInteger("max_players"),
@@ -101,7 +132,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           };
       const fee = interaction.options.getInteger("entry_fee") ?? defaults.entryFee;
       const max = interaction.options.getInteger("max_players") ?? defaults.maxPlayers;
-      await createInfernoGames(interaction, fee, max);
+      await createInfernoGames(interaction, fee, max, {
+        winPrize: interaction.options.getInteger("win_prize") ?? defaults.winPrize,
+        reviveCost: interaction.options.getInteger("revive_cost") ?? defaults.reviveCost,
+        maxRevives: interaction.options.getInteger("max_revives") ?? defaults.maxRevives,
+      });
       return;
     }
     if (sub === "status") {

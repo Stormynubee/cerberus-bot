@@ -121,10 +121,19 @@ function signupRow(gameId: string) {
   );
 }
 
-function replaceHgRow(gameId: string, entryFee: number, maxPlayers: number) {
+function replaceHgRow(
+  gameId: string,
+  entryFee: number,
+  maxPlayers: number,
+  winPrize: number,
+  reviveCost: number,
+  maxRevives: number,
+) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`hg:replace:${gameId}:${entryFee}:${maxPlayers}`)
+      .setCustomId(
+        `hg:replace:${gameId}:${entryFee}:${maxPlayers}:${winPrize}:${reviveCost}:${maxRevives}`,
+      )
       .setLabel("Close previous & open new")
       .setStyle(ButtonStyle.Danger),
   );
@@ -240,6 +249,21 @@ function assertFee(fee: number) {
   }
 }
 
+function assertPrize(winPrize: number) {
+  if (winPrize < 0) throw new EconomyError("Win prize cannot be negative.");
+  if (winPrize > config.maxBet * 10) {
+    throw new EconomyError(`Win prize max is ${formatCoins(config.maxBet * 10)}.`);
+  }
+}
+
+function assertRevive(reviveCost: number, maxRevives: number) {
+  if (reviveCost < 0) throw new EconomyError("Revive cost cannot be negative.");
+  if (reviveCost > 0) assertFee(reviveCost);
+  if (maxRevives < 0 || maxRevives > 10) {
+    throw new EconomyError("Max revives must be between 0 and 10.");
+  }
+}
+
 export async function getHgDefaults(guildId: string): Promise<{
   entryFee: number;
   maxPlayers: number;
@@ -303,7 +327,7 @@ export async function setupInfernoGames(
               `Max revives / tribute: **${current.maxRevives}**\n` +
               `Max tributes: **${current.maxPlayers}**\n\n` +
               `_Host pays the base prize when opening a round (refunded if cancelled)._\n` +
-              `\`/hungergames setup win_prize:250 revive_cost:50 max_revives:2\``,
+              `\`/hungergames pricing win_prize:250 revive_cost:50 max_revives:2\``,
           ),
       ],
     });
@@ -321,15 +345,8 @@ export async function setupInfernoGames(
 
   if (nextFee < 0) throw new EconomyError("Entry fee cannot be negative.");
   assertFee(nextFee);
-  if (nextWin < 0) throw new EconomyError("Win prize cannot be negative.");
-  if (nextWin > config.maxBet * 10) {
-    throw new EconomyError(`Win prize max is ${formatCoins(config.maxBet * 10)}.`);
-  }
-  if (nextRevive < 0) throw new EconomyError("Revive cost cannot be negative.");
-  if (nextRevive > 0) assertFee(nextRevive);
-  if (nextMaxRevives < 0 || nextMaxRevives > 10) {
-    throw new EconomyError("Max revives must be between 0 and 10.");
-  }
+  assertPrize(nextWin);
+  assertRevive(nextRevive, nextMaxRevives);
 
   await prisma.guildSettings.upsert({
     where: { guildId: interaction.guildId },
@@ -368,6 +385,7 @@ export async function createInfernoGames(
   interaction: ChatInputCommandInteraction,
   entryFee: number,
   maxPlayers: number,
+  prices?: { winPrize: number; reviveCost: number; maxRevives: number },
 ) {
   if (!interaction.guildId || !interaction.channel) {
     throw new EconomyError("Inferno Games can only run inside a server channel.");
@@ -376,6 +394,13 @@ export async function createInfernoGames(
   const max = Math.min(Math.max(maxPlayers, config.hgMinPlayers), config.hgMaxPlayers);
   if (entryFee < 0) throw new EconomyError("Entry fee cannot be negative.");
   assertFee(entryFee);
+
+  const defaults = await getHgDefaults(interaction.guildId);
+  const winPrize = prices?.winPrize ?? defaults.winPrize;
+  const reviveCost = prices?.reviveCost ?? defaults.reviveCost;
+  const maxRevives = prices?.maxRevives ?? defaults.maxRevives;
+  assertPrize(winPrize);
+  assertRevive(reviveCost, maxRevives);
 
   const existing = await prisma.arenaGame.findFirst({
     where: { guildId: interaction.guildId, status: { in: ["signup", "running"] } },
@@ -389,31 +414,36 @@ export async function createInfernoGames(
           .setDescription(
             `A round is already **${existing.status}** (host <@${existing.hostId}>).\n` +
               (canClose
-                ? `Close it to open a new signup (entry **${entryFee > 0 ? formatCoins(entryFee) : "FREE"}**, max **${max}**).`
+                ? `Close it to open a new signup (entry **${entryFee > 0 ? formatCoins(entryFee) : "FREE"}**, prize **${formatCoins(winPrize)}**, max **${max}**).`
                 : "Ask the host or a moderator to cancel it first."),
           ),
       ],
-      components: canClose ? [replaceHgRow(existing.id, entryFee, max)] : [],
+      components: canClose
+        ? [replaceHgRow(existing.id, entryFee, max, winPrize, reviveCost, maxRevives)]
+        : [],
     });
     return;
   }
 
-  await openInfernoSignup(interaction, entryFee, max);
+  await openInfernoSignup(interaction, entryFee, max, { winPrize, reviveCost, maxRevives });
 }
 
 async function openInfernoSignup(
   interaction: ChatInputCommandInteraction | ButtonInteraction,
   entryFee: number,
   maxPlayers: number,
+  prices?: { winPrize: number; reviveCost: number; maxRevives: number },
 ) {
   if (!interaction.guildId || !interaction.channel) {
     throw new EconomyError("Inferno Games can only run inside a server channel.");
   }
 
   const defaults = await getHgDefaults(interaction.guildId);
-  const winPrize = defaults.winPrize;
-  const reviveCost = defaults.reviveCost;
-  const maxRevives = defaults.maxRevives;
+  const winPrize = prices?.winPrize ?? defaults.winPrize;
+  const reviveCost = prices?.reviveCost ?? defaults.reviveCost;
+  const maxRevives = prices?.maxRevives ?? defaults.maxRevives;
+  assertPrize(winPrize);
+  assertRevive(reviveCost, maxRevives);
 
   await ensureUser(interaction.user.id, interaction.user.username);
   if (winPrize > 0) {
@@ -533,6 +563,9 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
   if (action === "replace") {
     const entryFee = Number(parts[3] ?? 0);
     const maxPlayers = Number(parts[4] ?? config.hgMaxPlayers);
+    const winPrize = Number.isFinite(Number(parts[5])) ? Number(parts[5]) : undefined;
+    const reviveCost = Number.isFinite(Number(parts[6])) ? Number(parts[6]) : undefined;
+    const maxRevives = Number.isFinite(Number(parts[7])) ? Number(parts[7]) : undefined;
     try {
       const existing = await loadGame(gameId);
       if (!existing || !["signup", "running"].includes(existing.status)) {
@@ -582,7 +615,14 @@ export async function handleHungerButton(interaction: ButtonInteraction) {
 
       assertFee(entryFee);
       const max = Math.min(Math.max(maxPlayers, config.hgMinPlayers), config.hgMaxPlayers);
-      await openInfernoSignup(interaction, entryFee, max);
+      await openInfernoSignup(
+        interaction,
+        entryFee,
+        max,
+        winPrize !== undefined && reviveCost !== undefined && maxRevives !== undefined
+          ? { winPrize, reviveCost, maxRevives }
+          : undefined,
+      );
     } catch (err) {
       const msg = err instanceof EconomyError ? err.message : "Could not replace arena.";
       if (interaction.replied || interaction.deferred) {
@@ -969,32 +1009,47 @@ async function handleHgRevive(interaction: ButtonInteraction, gameId: string) {
     return;
   }
 
-  const revived = await prisma.arenaTribute.updateMany({
-    where: {
-      id: tribute.id,
-      alive: false,
-      revivesUsed: { lt: game.maxRevives },
-    },
-    data: {
-      alive: true,
-      infected: false,
-      revivesUsed: { increment: 1 },
-      diedDay: null,
-      diedPhase: null,
-      deathText: null,
-    },
-  });
-
-  if (revived.count !== 1) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.arenaTribute.updateMany({
+        where: {
+          id: tribute.id,
+          alive: false,
+          revivesUsed: { lt: game.maxRevives },
+        },
+        data: {
+          alive: true,
+          infected: false,
+          revivesUsed: { increment: 1 },
+          diedDay: null,
+          diedPhase: null,
+          deathText: null,
+        },
+      });
+      if (result.count !== 1) {
+        throw new EconomyError("Revive failed — round may have ended or you already revived.");
+      }
+      if (cost > 0) {
+        const funded = await tx.arenaGame.updateMany({
+          where: { id: gameId, status: "running" },
+          data: { prizePool: { increment: cost } },
+        });
+        if (funded.count !== 1) {
+          throw new EconomyError("Revive failed — round may have ended or you already revived.");
+        }
+      }
+    });
+  } catch (err) {
     if (cost > 0) {
       await creditForced(interaction.user.id, cost, "hg_revive_rollback", gameId).catch(() =>
         undefined,
       );
     }
-    await interaction.reply({
-      embeds: [errorEmbed("Revive failed — round may have ended or you already revived.")],
-      flags: MessageFlags.Ephemeral,
-    });
+    const msg =
+      err instanceof EconomyError
+        ? err.message
+        : "Revive failed — round may have ended or you already revived.";
+    await interaction.reply({ embeds: [errorEmbed(msg)], flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -1005,6 +1060,7 @@ async function handleHgRevive(interaction: ButtonInteraction, gameId: string) {
       successEmbed(
         `${theme.emojis.fire} Back from the ash`,
         `${interaction.user} pays **${formatCoins(cost)}** and returns to the Inferno!\n` +
+          (cost > 0 ? `That fee is added to the prize pool.\n` : "") +
           `Revives left this round: **${left}/${game.maxRevives}**.`,
       ),
     ],
@@ -1036,7 +1092,7 @@ async function offerReviveWindow(
         .setTitle("✨ Sponsor revive window")
         .setDescription(
           `Dead tributes can buy back in for **${formatCoins(reviveCost)}** ` +
-            `(**${maxRevives}** max per player).\n` +
+            `(**${maxRevives}** max per player). Revive fees go into the prize pool.\n` +
             `Window open for **${seconds}s** — then the next phase begins.`,
         ),
     ],
@@ -1189,7 +1245,9 @@ async function runArenaSimulation(interaction: ButtonInteraction, gameId: string
       while (states.filter((t) => t.alive).length > 1) {
         runPhase(states, "finale", finalGame.dayNumber);
       }
-      await persistTributeStates(gameId, states, "finale", finalGame.dayNumber, new Map());
+      await persistTributeStates(gameId, states, "finale", finalGame.dayNumber, new Map(), {
+        clobberAlive: true,
+      });
       await crownWinner(textChannel, gameId, states, finalGame.prizePool);
     }
   } catch (err) {

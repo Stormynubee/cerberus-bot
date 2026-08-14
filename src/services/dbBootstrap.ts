@@ -34,10 +34,8 @@ export async function bootstrapGuildAccess(): Promise<void> {
       hgDefaultMaxPlayers: config.hgMaxPlayers,
     },
     update: {
+      // Do not reset Inferno Games prices here — `/hungergames pricing` owns those fields.
       arenaMasterRole: verifiedRoleId,
-      hgDefaultWinPrize: config.hgDefaultWinPrize,
-      hgDefaultReviveCost: config.hgDefaultReviveCost,
-      hgDefaultMaxRevives: config.hgDefaultMaxRevives,
     },
   });
 

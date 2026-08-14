@@ -38,8 +38,9 @@ Set the bot username to **GreekBot**. Optional: `SYNC_BOT_AVATAR=1` once to push
 | `/highlow` | Card climb |
 
 ### Inferno Games
-| `/hungergames new` | Open signup (optional entry fee → prize pool) |
-| `/hungergames status` | Alive / dead / infected |
+| `/hungergames pricing` | Set server defaults (win prize, revive cost, entry fee, max players). `/hungergames setup` is the same command |
+| `/hungergames new` | Open signup (optional per-round overrides; host pays the base prize) |
+| `/hungergames status` | Alive / dead / infected / prize pool |
 
 Flow: **Join** → **Start** → Bloodbath → Day/Night cycles → Feast → Finale.
 

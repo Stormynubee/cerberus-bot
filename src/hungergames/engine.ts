@@ -278,9 +278,12 @@ export async function persistTributeStates(
   phase: string,
   dayNumber: number,
   deathTexts: Map<string, string>,
+  opts?: { clobberAlive?: boolean },
 ) {
   for (const t of states) {
     const newlyDead = !t.alive && deathTexts.has(t.userId);
+    // Skip already-dead tributes so a paid revive during the next phase is not overwritten.
+    if (!t.alive && !newlyDead && !opts?.clobberAlive) continue;
     await prisma.arenaTribute.update({
       where: { id: t.id },
       data: {

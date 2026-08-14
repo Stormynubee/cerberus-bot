@@ -37,6 +37,7 @@ const REASON_LABEL: Record<string, string> = {
   hg_prize: "Inferno Games prize",
   hg_entry: "Inferno Games entry",
   hg_seed_prize: "Inferno Games host seed",
+  hg_revive: "Inferno Games revive",
 };
 
 function labelReason(reason: string): string {

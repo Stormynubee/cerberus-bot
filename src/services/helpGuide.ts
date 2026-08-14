@@ -109,11 +109,12 @@ export const TABS: Record<HelpTab, TabContent> = {
       "it is not a pure survival lottery. Early deaths are expected.\n" +
       "The host **pays the base prize** when opening a round (refunded if cancelled); entry fees add to the pool.",
     steps: [
-      "Mods: `/hungergames setup win_prize:250 revive_cost:50 max_revives:2`",
+      "Mods: `/hungergames pricing win_prize:250 revive_cost:50 max_revives:2`",
+      "Same command: `/hungergames setup` (alias of pricing)",
       "Host: `/hungergames new` (uses server defaults — host must afford the base prize)",
       "Everyone taps **Join** on the signup message",
       "Host / Arena Master / mods tap **Start** (min players required)",
-      "Dead tributes can **Revive** (default 50 HCC, max 2) between phases",
+      "Dead tributes can **Revive** between phases (fee is added to the prize pool)",
       "Phases: Bloodbath → Day/Night → Feast → Finale",
       "`/hungergames status` — alive / dead / infected mid-match",
       "Last tribute standing wins the prize pool",

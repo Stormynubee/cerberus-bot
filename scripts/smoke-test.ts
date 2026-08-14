@@ -412,6 +412,23 @@ async function main() {
     }
     assert(commands.size >= needed.length, "command count");
     assert(existsSync(path.join(process.cwd(), "assets/gifs/home.gif")), "home.gif missing");
+
+    const hg = commands.get("hungergames");
+    assert(hg, "hungergames command missing");
+    const json = hg.data.toJSON() as {
+      options?: Array<{ name: string; options?: Array<{ name: string }> }>;
+    };
+    const subs = new Set((json.options ?? []).map((o) => o.name));
+    for (const name of ["setup", "pricing", "new", "status"]) {
+      assert(subs.has(name), `missing /hungergames ${name}`);
+    }
+    const optionNames = (sub: string) =>
+      (json.options?.find((o) => o.name === sub)?.options ?? []).map((o) => o.name);
+    for (const field of ["win_prize", "revive_cost", "max_revives", "entry_fee", "max_players"]) {
+      assert(optionNames("pricing").includes(field), `/hungergames pricing missing ${field}`);
+      assert(optionNames("setup").includes(field), `/hungergames setup missing ${field}`);
+      assert(optionNames("new").includes(field), `/hungergames new missing ${field}`);
+    }
   });
 
   await prisma.$disconnect();
