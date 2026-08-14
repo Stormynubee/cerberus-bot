@@ -4,6 +4,7 @@ import {
   PermissionFlagsBits,
   User,
 } from "discord.js";
+import { config } from "../config.js";
 
 /** Pure staff check so smoke tests can cover tip-recipient rules without Discord. */
 export function memberCanReceiveTips(input: {
@@ -39,6 +40,24 @@ function flagsFrom(member: GuildMember) {
     banMembers: p.has(PermissionFlagsBits.BanMembers),
     moderateMembers: p.has(PermissionFlagsBits.ModerateMembers),
   };
+}
+
+/** Discord server booster or configured VIP role → 20 HCC daily instead of 10. */
+export function qualifiesForVipDaily(member: unknown): boolean {
+  if (!member || typeof member !== "object") return false;
+  const m = member as {
+    premiumSince?: Date | string | null;
+    premium_since?: string | null;
+    roles?: { cache?: { has: (id: string) => boolean } } | string[];
+  };
+  if (m.premiumSince) return true;
+  if (m.premium_since) return true;
+
+  const vipId = config.vipRoleId;
+  if (!vipId) return false;
+  if (Array.isArray(m.roles)) return m.roles.includes(vipId);
+  if (m.roles?.cache?.has(vipId)) return true;
+  return false;
 }
 
 /** Owner, Administrator, Manage Server, or typical mod perms. Never bots. */

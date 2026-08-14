@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../src/db.js";
+import { config } from "../src/config.js";
 import {
   assertBetAmount,
   claimDaily,
@@ -371,15 +372,23 @@ async function main() {
     // Force daily claimable by clearing lastDailyAt
     await prisma.user.update({ where: { id: a }, data: { lastDailyAt: null, dailyStreak: 0 } });
     const daily = await claimDaily(a, "SmokeA");
-    assert(daily.payout > 0, "daily payout");
+    assert(daily.payout === 10, "regular daily is 10 HCC");
+    assert(daily.streakBonus === 0, "daily has no streak coin bonus");
+    assert(daily.streak === 1, "daily streak starts at 1");
+
+    await prisma.user.update({ where: { id: a }, data: { lastDailyAt: null } });
+    const vipDaily = await claimDaily(a, "SmokeA", { vipDaily: true });
+    assert(vipDaily.payout === 20, "vip/booster daily is 20 HCC");
+    assert(vipDaily.streakBonus === 0, "vip daily has no streak coin bonus");
 
     let threw = false;
     try {
-      assertBetAmount(1);
+      assertBetAmount(24);
     } catch (e) {
       threw = e instanceof EconomyError;
     }
-    assert(threw, "min bet should reject tiny wagers");
+    assert(threw, "min bet should reject 24 HCC");
+    assertBetAmount(25);
 
     const rake = applyRake(100);
     assert(rake.net + rake.rake === 100, "rake splits cleanly");
@@ -431,8 +440,14 @@ async function main() {
     }
   });
 
+  await test("daily is 10 HCC, VIP/booster 20, min wager 25", async () => {
+    assert(config.dailyReward === 10, "DAILY_REWARD is 10");
+    assert(config.dailyRewardVip === 20, "DAILY_REWARD_VIP is 20");
+    assert(config.minBet === 25, "MIN_BET is 25");
+  });
+
   await test("tips only go to owner, admin, or mods", async () => {
-    const { memberCanReceiveTips } = await import("../src/services/staff.js");
+    const { memberCanReceiveTips, qualifiesForVipDaily } = await import("../src/services/staff.js");
     const base = {
       ownerId: "owner",
       userId: "user",
@@ -459,6 +474,13 @@ async function main() {
     assert(
       !memberCanReceiveTips({ ...base, administrator: true, bot: true }),
       "admin bots cannot receive",
+    );
+    assert(!qualifiesForVipDaily(null), "missing member is not VIP daily");
+    assert(!qualifiesForVipDaily({}), "plain member is not VIP daily");
+    assert(qualifiesForVipDaily({ premiumSince: new Date() }), "booster Date is VIP daily");
+    assert(
+      qualifiesForVipDaily({ premium_since: "2026-01-01T00:00:00.000Z" }),
+      "booster API field is VIP daily",
     );
   });
 

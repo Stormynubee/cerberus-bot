@@ -25,7 +25,7 @@ Enable **Message Content Intent** in the Discord Developer Portal (Bot → Privi
 |--------|----------------|
 | `/help` | Guided help with steps + demo GIFs (also `/hell`) |
 | `/balance` | Wallet |
-| `/daily` | Daily claim + streak bonus |
+| `/daily` | 10 HCC once per day (20 if VIP or Discord server booster) |
 | `/tip` | Send HCC to the server owner, an admin, or a mod only |
 | `/leaderboard` | Top wallets + jackpot |
 | `/profile` | Combat stats |
@@ -80,6 +80,10 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=21
 
 | Env | Default | Meaning |
 |-----|---------|---------|
+| `DAILY_REWARD` | 10 | Regular `/daily` payout (HCC) |
+| `DAILY_REWARD_VIP` | 20 | `/daily` payout for VIP role or server booster |
+| `VIP_ROLE_ID` | unset | Optional VIP role; boosters still get 20 without this |
+| `MIN_BET` | 25 | Minimum casino / PvP wager |
 | `HG_EVENT_DELAY_MS` | 7500 | Delay between arena events |
 | `HG_MIN_PLAYERS` | 4 | Minimum tributes |
 | `HG_MAX_PLAYERS` | 24 | Maximum tributes |

@@ -55,7 +55,7 @@ export const TABS: Record<HelpTab, TabContent> = {
     gif: "wallet.gif",
     body: "Your HellCatCoins live on your Discord wallet. No crypto — pure server fun.",
     steps: [
-      "`/daily` — claim once per day (streak bonus)",
+      "`/daily` — 10 HCC once per day (20 if VIP or server booster)",
       "`/balance` — see your stack",
       "`/tip @staff amount` — send HCC to owner / admin / mod only",
       "`/leaderboard` — top wallets + jackpot peek",
@@ -90,6 +90,7 @@ export const TABS: Record<HelpTab, TabContent> = {
       "Solo games vs GreekBot. Watch the live embeds — some rounds need a **Cash Out** button.\n" +
       "House games disclose their edge: typically **~2% rake on wins** (jackpot-bound).",
     steps: [
+      "Minimum wager is **25 HCC**",
       "`/slots amount` — 3-reel Inferno spin",
       "`/roulette amount red|black|green` — green pays **36x** (European-style)",
       "`/crash amount` — Bustabit-style curve; **3%** instant 1.00x; cash out before it blows",

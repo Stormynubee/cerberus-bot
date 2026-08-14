@@ -193,7 +193,11 @@ export async function transfer(
   );
 }
 
-export async function claimDaily(userId: string, username?: string | null) {
+export async function claimDaily(
+  userId: string,
+  username?: string | null,
+  opts?: { vipDaily?: boolean },
+) {
   return withUserLock(userId, async () => {
     await ensureUser(userId, username);
     return prisma.$transaction(async (tx) => {
@@ -218,8 +222,9 @@ export async function claimDaily(userId: string, username?: string | null) {
         : Infinity;
       const streakContinues = sinceLast <= 48 * 60 * 60 * 1000;
       const streak = streakContinues ? user.dailyStreak + 1 : 1;
-      const streakBonus = Math.min(streak - 1, 14) * 25;
-      const payout = config.dailyReward + streakBonus;
+      const streakBonus = 0;
+      const base = opts?.vipDaily ? config.dailyRewardVip : config.dailyReward;
+      const payout = base + streakBonus;
 
       const updated = await tx.user.update({
         where: { id: userId },

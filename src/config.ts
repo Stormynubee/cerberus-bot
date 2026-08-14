@@ -21,8 +21,9 @@ export const config = {
   guildId: process.env.DISCORD_GUILD_ID || undefined,
   redisUrl: process.env.REDIS_URL || undefined,
   startingBalance: intEnv("STARTING_BALANCE", 1000),
-  dailyReward: intEnv("DAILY_REWARD", 250),
-  minBet: intEnv("MIN_BET", 10),
+  dailyReward: intEnv("DAILY_REWARD", 10),
+  dailyRewardVip: intEnv("DAILY_REWARD_VIP", 20),
+  minBet: intEnv("MIN_BET", 25),
   maxBet: intEnv("MAX_BET", 25_000),
   challengeTtlSeconds: intEnv("CHALLENGE_TTL_SECONDS", 60),
   /** Soft house rake on PvE wins (percent) — feeds progressive jackpot */
@@ -51,6 +52,8 @@ export const config = {
    */
   verifiedRoleId:
     process.env.VERIFIED_ROLE_ID?.trim() || "1500433834456645725",
+  /** Optional VIP role — same 20 HCC daily as Discord server boosters. */
+  vipRoleId: process.env.VIP_ROLE_ID?.trim() || undefined,
   /**
    * When true, any guild member can open/start/setup Inferno Games (not just mods).
    * Public casino commands already use default_member_permissions=null.
