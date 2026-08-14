@@ -331,11 +331,10 @@ function page1(): Bitmap {
   b.sprite(W - 78, 11, CAT, MAP, 2);
 
   b.text(16, 50, "GreekGodBerry HellCat casino.", C.ink);
-  b.text(16, 60, "Virtual HCC. Worth nothing. Flex anyway.", C.dim);
-  b.text(16, 70, "Same commands:  /daily   or   !daily", C.green);
+  b.text(16, 62, "Same commands:  /daily   or   !daily", C.green);
 
-  b.text(16, 86, "WALLET", C.red);
-  let y = 98;
+  b.text(16, 78, "WALLET", C.red);
+  let y = 90;
   y = cmd(b, y, "/help  /hell", "this guide");
   y = cmd(b, y, "/daily", "claim + streak");
   y = cmd(b, y, "/balance", "your HCC");
@@ -399,8 +398,7 @@ function page3(): Bitmap {
   y = cmd(b, y, "/admin bigwin", "big-win feed");
   y = cmd(b, y, "/admin arenamaster", "arena role");
 
-  b.text(16, 184, "Last cat standing takes the pot.", C.dim);
-  b.text(16, 196, "HCC has no real value. 18+", C.gold);
+  b.text(16, 196, "Last cat standing takes the pot.", C.dim);
   return b;
 }
 
