@@ -24,11 +24,11 @@ export async function maybeSyncBotAvatar(client: Client): Promise<void> {
 }
 
 const PRESENCE_LINES = [
-  "GreekBot · HellCatCoins · /help",
-  "Inferno Games · /hungergames",
-  "Casino open · /slots /crash",
+  "GreekBot · HellCatCoins · !help",
+  "Inferno Games · !hungergames new",
+  "Casino open · !slots !crash",
   "GreekGodBerry · greekgambles.com",
-  "Stack HCC · /daily /balance",
+  "Stack HCC · !daily !balance",
 ];
 
 export function startPresenceRotation(client: Client): void {

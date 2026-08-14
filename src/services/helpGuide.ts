@@ -38,14 +38,15 @@ export const TABS: Record<HelpTab, TabContent> = {
     body:
       "Welcome to **GreekBot** for the GreekGodBerry community.\n" +
       "Everything runs on virtual **HellCatCoins** (entertainment only · 18+).\n\n" +
+      "Every command works as a **slash** (`/daily`) or with prefix **`!`** (`!daily`).\n" +
       "Use the buttons below — each tab has a **guide GIF** + exact commands.",
     steps: [
-      "Claim `/daily` so you have coins to play",
-      "Try a quick `/slots` or `/coinflip` vs the house",
-      "Challenge a friend with `/rps` or `/coinflip`",
-      "When the lobby opens, Join **Inferno Games**",
+      "Claim `/daily` or `!daily` so you have coins to play",
+      "Try a quick `!slots 25` or `!coinflip 50 heads`",
+      "Challenge a friend with `!rps @user 25` or `!coinflip 50 heads @user`",
+      "When the lobby opens, Join **Inferno Games** (`!hungergames new`)",
     ],
-    tryNext: "`/daily` → then open **Wallet** or **Casino**",
+    tryNext: "`!daily` → then open **Wallet** or **Casino**",
   },
   wallet: {
     label: "Wallet",
@@ -61,7 +62,7 @@ export const TABS: Record<HelpTab, TabContent> = {
       "`/profile` — wins, losses, streaks",
       "`/jackpot` — progressive house pot",
     ],
-    tryNext: "Run `/daily` now, then open **Casino**",
+    tryNext: "Run `!daily` or `/daily` now, then open **Casino**",
   },
   pvp: {
     label: "PvP",

@@ -21,6 +21,7 @@ import { handleBlackjackButton } from "./games/blackjack.js";
 import { handleCoinflipButton } from "./games/coinflip.js";
 import { handleRpsButton, handleRpsPickButton } from "./games/rps.js";
 import { handleHungerButton } from "./hungergames/runner.js";
+import { handlePrefixMessage } from "./prefix/handler.js";
 import { connectRedis, disconnectRedis } from "./locks.js";
 import { bootstrapGuildAccess } from "./services/dbBootstrap.js";
 import { maybeSyncBotAvatar, startPresenceRotation } from "./services/branding.js";
@@ -127,11 +128,18 @@ async function warnLockedCommandPermissions(
 
 export function createClient(commands: Collection<string, BotCommand>) {
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
   });
 
   client.once(Events.ClientReady, (c) => {
     console.log(`[greekbot] Online as ${c.user.tag}`);
+    console.log(
+      `[greekbot] Prefix commands: "${config.prefix}" (also @${c.user.username} command) · Message Content Intent required for ${config.prefix} without a mention`,
+    );
     startPresenceRotation(c);
     void maybeSyncBotAvatar(c);
     void bootstrapGuildAccess().catch((err) =>
@@ -231,6 +239,12 @@ export function createClient(commands: Collection<string, BotCommand>) {
         }
       }
     }
+  });
+
+  client.on(Events.MessageCreate, (message) => {
+    void handlePrefixMessage(message, commands).catch((err) =>
+      console.error("[prefix] handler", err),
+    );
   });
 
   client.on(Events.Error, (err) => console.error("[greekbot] client error", err));

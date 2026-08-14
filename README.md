@@ -15,6 +15,11 @@ Set the bot username to **GreekBot**. Optional: `SYNC_BOT_AVATAR=1` once to push
 
 ## Commands
 
+Every slash command also works with prefix **`!`** (example: `!daily`, `!slots 25`, `!hungergames new`).
+You can also mention the bot: `@GreekBot daily`.
+
+Enable **Message Content Intent** in the Discord Developer Portal (Bot → Privileged Gateway Intents) so `!` commands are visible to the bot.
+
 ### Wallet
 | Command | What it does |
 |--------|----------------|

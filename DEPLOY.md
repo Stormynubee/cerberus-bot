@@ -3,6 +3,7 @@
 ## Checklist
 
 1. Discord app created; token + client ID in secrets
+1b. Bot → Privileged Gateway Intents → **Message Content Intent** ON (required for `!` prefix commands)
 2. Bot username **GreekBot**; icon = `assets/greekbot-avatar.png` (see `assets/BRANDING.md`)
 3. Invite with `bot` + `applications.commands` (see README invite URL)
 4. **Neon Postgres** with `DATABASE_URL` + `DIRECT_URL` in `.env`

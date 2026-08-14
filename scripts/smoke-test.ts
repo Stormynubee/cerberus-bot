@@ -431,6 +431,105 @@ async function main() {
     }
   });
 
+  await test("prefix ! parser binds slash options", async () => {
+    const {
+      tokenize,
+      extractPrefixBody,
+      resolveCommandName,
+      bindPrefixArgs,
+      PrefixParseError,
+    } = await import("../src/prefix/parse.js");
+
+    assert(extractPrefixBody("!slots 25", "!") === "slots 25", "strip prefix");
+    assert(extractPrefixBody("slots 25", "!") === null, "ignore non-prefix");
+    assert(
+      extractPrefixBody("<@123> slots 25", "!", "123") === "slots 25",
+      "mention prefix",
+    );
+    assert(
+      extractPrefixBody("<@123> !daily", "!", "123") === "daily",
+      "mention + bang",
+    );
+    assert(tokenize(`coinflip 50 heads`).join("|") === "coinflip|50|heads", "tokenize");
+    assert(resolveCommandName("hg") === "hungergames", "alias hg");
+    assert(resolveCommandName("bal") === "balance", "alias bal");
+
+    const slots = {
+      name: "slots",
+      options: [{ type: 4, name: "amount", required: true }],
+    };
+    const slotsBound = bindPrefixArgs(["25"], slots, "!");
+    assert(slotsBound.values.get("amount") === "25", "slots amount");
+
+    let missing = false;
+    try {
+      bindPrefixArgs([], slots, "!");
+    } catch (err) {
+      missing = err instanceof PrefixParseError;
+    }
+    assert(missing, "slots requires amount");
+
+    const cf = {
+      name: "coinflip",
+      options: [
+        { type: 4, name: "amount", required: true },
+        {
+          type: 3,
+          name: "side",
+          required: true,
+          choices: [
+            { name: "Heads", value: "heads" },
+            { name: "Tails", value: "tails" },
+          ],
+        },
+        { type: 6, name: "opponent", required: false },
+      ],
+    };
+    const cfBound = bindPrefixArgs(["50", "heads", "<@99>"], cf, "!");
+    assert(cfBound.values.get("amount") === "50", "cf amount");
+    assert(cfBound.values.get("side") === "heads", "cf side");
+    assert(cfBound.values.get("opponent") === "<@99>", "cf opponent");
+
+    const tip = {
+      name: "tip",
+      options: [
+        { type: 6, name: "user", required: true },
+        { type: 4, name: "amount", required: true },
+      ],
+    };
+    const tipFlip = bindPrefixArgs(["100", "<@42>"], tip, "!");
+    assert(tipFlip.values.get("user") === "<@42>", "tip user either order");
+    assert(tipFlip.values.get("amount") === "100", "tip amount either order");
+
+    const hg = {
+      name: "hungergames",
+      options: [
+        {
+          type: 1,
+          name: "pricing",
+          options: [
+            { type: 4, name: "win_prize", required: false },
+            { type: 4, name: "revive_cost", required: false },
+          ],
+        },
+        { type: 1, name: "new" },
+        { type: 1, name: "status" },
+      ],
+    };
+    const hgBound = bindPrefixArgs(["pricing", "win_prize:250", "revive_cost:50"], hg, "!");
+    assert(hgBound.subcommand === "pricing", "hg sub");
+    assert(hgBound.values.get("win_prize") === "250", "hg named prize");
+    assert(hgBound.values.get("revive_cost") === "50", "hg named revive");
+
+    let noSub = false;
+    try {
+      bindPrefixArgs([], hg, "!");
+    } catch (err) {
+      noSub = err instanceof PrefixParseError;
+    }
+    assert(noSub, "hungergames requires a subcommand");
+  });
+
   await prisma.$disconnect();
 
   console.log(`\nResult: ${passed} passed, ${failed} failed\n`);

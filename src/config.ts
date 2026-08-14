@@ -56,4 +56,9 @@ export const config = {
    * Public casino commands already use default_member_permissions=null.
    */
   publicArenaHost: (process.env.PUBLIC_ARENA_HOST ?? "true").toLowerCase() !== "false",
+  /**
+   * Text-command prefix. Slash commands still work.
+   * Requires Message Content Intent in the Discord Developer Portal.
+   */
+  prefix: (process.env.COMMAND_PREFIX?.trim() || "!").slice(0, 8),
 };

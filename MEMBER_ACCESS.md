@@ -35,3 +35,12 @@ Bots **cannot** clear this with a bot token. A server owner/admin must change it
 
 Verified members and brand-new members can both use public slash commands.  
 `/admin` still requires **Manage Server** (intentional).
+
+## Prefix commands (`!`)
+
+If slash commands are hidden, the same commands work as text:
+
+- `!daily` · `!slots 25` · `!balance` · `!hungergames new`
+- `@GreekBot daily` also works (does not need Message Content Intent)
+
+Turn on **Message Content Intent** in the Developer Portal so `!` messages are readable.
