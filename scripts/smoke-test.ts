@@ -383,12 +383,12 @@ async function main() {
 
     let threw = false;
     try {
-      assertBetAmount(24);
+      assertBetAmount(9);
     } catch (e) {
       threw = e instanceof EconomyError;
     }
-    assert(threw, "min bet should reject 24 HCC");
-    assertBetAmount(25);
+    assert(threw, "min bet should reject 9 HCC");
+    assertBetAmount(10);
 
     const rake = applyRake(100);
     assert(rake.net + rake.rake === 100, "rake splits cleanly");
@@ -440,10 +440,10 @@ async function main() {
     }
   });
 
-  await test("daily is 10 HCC, VIP/booster 20, min wager 25", async () => {
+  await test("daily is 10 HCC, VIP/booster 20, min wager 10", async () => {
     assert(config.dailyReward === 10, "DAILY_REWARD is 10");
     assert(config.dailyRewardVip === 20, "DAILY_REWARD_VIP is 20");
-    assert(config.minBet === 25, "MIN_BET is 25");
+    assert(config.minBet === 10, "MIN_BET is 10");
   });
 
   await test("tips only go to owner, admin, or mods", async () => {

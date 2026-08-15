@@ -42,7 +42,7 @@ export const TABS: Record<HelpTab, TabContent> = {
       "Use the buttons below — each tab has a **guide GIF** + exact commands.",
     steps: [
       "Claim `/daily` or `!daily` so you have coins to play",
-      "Try a quick `!slots 25` or `!coinflip 50 heads`",
+      "Try a quick `!slots 10` or `!coinflip 50 heads`",
       "Challenge a friend with `!rps @user 25` or `!coinflip 50 heads @user`",
       "When the lobby opens, Join **Inferno Games** (`!hungergames new`)",
     ],
@@ -90,7 +90,7 @@ export const TABS: Record<HelpTab, TabContent> = {
       "Solo games vs GreekBot. Watch the live embeds — some rounds need a **Cash Out** button.\n" +
       "House games disclose their edge: typically **~2% rake on wins** (jackpot-bound).",
     steps: [
-      "Minimum wager is **25 HCC**",
+      "Minimum wager is **10 HCC** (one `/daily` covers one play)",
       "`/slots amount` — 3-reel Inferno spin",
       "`/roulette amount red|black|green` — green pays **36x** (European-style)",
       "`/crash amount` — Bustabit-style curve; **3%** instant 1.00x; cash out before it blows",
@@ -99,7 +99,7 @@ export const TABS: Record<HelpTab, TabContent> = {
       "`/blackjack amount` — dealer stands on all 17; no double/split",
       "Big wins can post to the server feed (admins set `/admin bigwin`)",
     ],
-    tryNext: "`/slots 25` or `/crash 50`",
+    tryNext: "`/slots 10` or `/crash 50`",
   },
   inferno: {
     label: "Inferno",

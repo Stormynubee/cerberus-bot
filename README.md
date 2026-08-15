@@ -15,7 +15,7 @@ Set the bot username to **GreekBot**. Optional: `SYNC_BOT_AVATAR=1` once to push
 
 ## Commands
 
-Every slash command also works with prefix **`!`** (example: `!daily`, `!slots 25`, `!hungergames new`).
+Every slash command also works with prefix **`!`** (example: `!daily`, `!slots 10`, `!hungergames new`).
 You can also mention the bot: `@GreekBot daily`.
 
 Enable **Message Content Intent** in the Discord Developer Portal (Bot → Privileged Gateway Intents) so `!` commands are visible to the bot.
@@ -83,7 +83,7 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=21
 | `DAILY_REWARD` | 10 | Regular `/daily` payout (HCC) |
 | `DAILY_REWARD_VIP` | 20 | `/daily` payout for VIP role or server booster |
 | `VIP_ROLE_ID` | unset | Optional VIP role; boosters still get 20 without this |
-| `MIN_BET` | 25 | Minimum casino / PvP wager |
+| `MIN_BET` | 10 | Minimum casino / PvP wager (one `/daily` covers one play) |
 | `HG_EVENT_DELAY_MS` | 7500 | Delay between arena events |
 | `HG_MIN_PLAYERS` | 4 | Minimum tributes |
 | `HG_MAX_PLAYERS` | 24 | Maximum tributes |

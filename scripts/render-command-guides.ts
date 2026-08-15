@@ -343,7 +343,7 @@ function page1(): Bitmap {
   y = cmd(b, y, "/profile", "wins / losses");
   y = cmd(b, y, "/jackpot", "house pot");
 
-  b.text(16, 176, "Insert coin. Try /daily then /slots 25", C.dim);
+  b.text(16, 176, "Insert coin. Try /daily then /slots 10", C.dim);
   b.text(16, 196, "next: games ->", C.gold);
   return b;
 }

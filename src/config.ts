@@ -23,7 +23,7 @@ export const config = {
   startingBalance: intEnv("STARTING_BALANCE", 1000),
   dailyReward: intEnv("DAILY_REWARD", 10),
   dailyRewardVip: intEnv("DAILY_REWARD_VIP", 20),
-  minBet: intEnv("MIN_BET", 25),
+  minBet: intEnv("MIN_BET", 10),
   maxBet: intEnv("MAX_BET", 25_000),
   challengeTtlSeconds: intEnv("CHALLENGE_TTL_SECONDS", 60),
   /** Soft house rake on PvE wins (percent) — feeds progressive jackpot */
