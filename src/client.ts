@@ -16,7 +16,7 @@ import { handleHelpButton } from "./commands/help.js";
 import { handleCrashButton } from "./commands/crash.js";
 import { handleHighLowButton } from "./commands/highlow.js";
 import { config } from "./config.js";
-import { prisma } from "./db.js";
+import { isDbUnreachable, prisma, vaultOfflineMessage } from "./db.js";
 import { handleBlackjackButton } from "./games/blackjack.js";
 import { handleCoinflipButton } from "./games/coinflip.js";
 import { handleRpsButton, handleRpsPickButton } from "./games/rps.js";
@@ -187,7 +187,10 @@ export function createClient(commands: Collection<string, BotCommand>) {
           await command.execute(interaction as never);
         } catch (cmdErr) {
           console.error(`[greekbot] /${interaction.commandName} failed`, cmdErr);
-          const embed = errorEmbed("Something went wrong. Try again in a moment.");
+          const msg = isDbUnreachable(cmdErr)
+            ? vaultOfflineMessage()
+            : "Something went wrong. Try again in a moment.";
+          const embed = errorEmbed(msg);
           await interaction.editReply({ embeds: [embed] }).catch(() => undefined);
         }
         return;

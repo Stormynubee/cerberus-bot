@@ -46,5 +46,16 @@ export async function bootstrapGuildAccess(): Promise<void> {
 }
 
 export async function verifyDatabaseConnection(): Promise<void> {
-  await prisma.$queryRaw`SELECT 1`;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[greekbot] DB ping failed (attempt ${attempt}/4)`, err);
+      await new Promise((r) => setTimeout(r, 2500 * attempt));
+    }
+  }
+  throw lastErr;
 }

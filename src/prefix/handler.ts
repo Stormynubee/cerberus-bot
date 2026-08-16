@@ -1,5 +1,6 @@
 import { Collection, Message } from "discord.js";
 import { config } from "../config.js";
+import { isDbUnreachable, vaultOfflineMessage } from "../db.js";
 import { errorEmbed } from "../utils/embeds.js";
 import { createPrefixInteraction } from "./adapter.js";
 import {
@@ -62,7 +63,9 @@ export async function handlePrefixMessage(
       const text =
         cmdErr instanceof PrefixParseError
           ? cmdErr.message
-          : "Something went wrong. Try again in a moment.";
+          : isDbUnreachable(cmdErr)
+            ? vaultOfflineMessage()
+            : "Something went wrong. Try again in a moment.";
       if (!(cmdErr instanceof PrefixParseError)) {
         console.error(`[prefix] ${prefix}${commandName} failed`, cmdErr);
       }
@@ -81,7 +84,9 @@ export async function handlePrefixMessage(
     const text =
       err instanceof PrefixParseError
         ? err.message
-        : "Something went wrong. Try again in a moment.";
+        : isDbUnreachable(err)
+          ? vaultOfflineMessage()
+          : "Something went wrong. Try again in a moment.";
     if (!(err instanceof PrefixParseError)) {
       console.error(`[prefix] ${prefix}${commandName} failed`, err);
     }

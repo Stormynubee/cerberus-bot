@@ -3,6 +3,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { startBlackjack } from "../games/blackjack.js";
+import { isDbUnreachable, vaultOfflineMessage } from "../db.js";
 import { EconomyError } from "../services/wallet.js";
 import { errorEmbed } from "../utils/embeds.js";
 import { ackCommand } from "../utils/interaction.js";
@@ -20,7 +21,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   try {
     await startBlackjack(interaction, amount);
   } catch (err) {
-    const msg = err instanceof EconomyError ? err.message : "Blackjack failed.";
+    const msg =
+      err instanceof EconomyError
+        ? err.message
+        : isDbUnreachable(err)
+          ? vaultOfflineMessage()
+          : "Blackjack failed.";
     await interaction.editReply({ embeds: [errorEmbed(msg)] });
   }
 }

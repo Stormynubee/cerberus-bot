@@ -2,6 +2,7 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
 } from "discord.js";
+import { isDbUnreachable, vaultOfflineMessage } from "../db.js";
 import { canReceiveTip } from "../services/staff.js";
 import { EconomyError, ensureUser, transfer } from "../services/wallet.js";
 import { formatCoins, theme } from "../theme.js";
@@ -52,7 +53,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ],
     });
   } catch (err) {
-    const msg = err instanceof EconomyError ? err.message : "Tip failed.";
+    const msg =
+      err instanceof EconomyError
+        ? err.message
+        : isDbUnreachable(err)
+          ? vaultOfflineMessage()
+          : "Tip failed.";
     await respond(interaction, { embeds: [errorEmbed(msg)] });
   }
 }
