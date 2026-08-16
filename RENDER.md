@@ -27,10 +27,10 @@ Discord allows **one** gateway session per token. Logging in locally kicks Rende
 
 ### Hybrid Free setup (Render + laptop)
 
-- **Recommended:** `npm run laptop:keepalive` on your laptop — only pings Render so it stays awake (does not log into Discord).
-- **Backup:** `npm run laptop:failover` — starts the bot on your laptop only when Render is down.
+See [HYBRID_HOSTING.md](./HYBRID_HOSTING.md). Current mode is **laptop primary** (Render `HOSTING_ROLE=paused-laptop-primary`). Do not run the production token locally while Render is logged into Discord.
 
-See [HYBRID_HOSTING.md](./HYBRID_HOSTING.md).
+- **Laptop keep-alive:** `npm run laptop:keepalive` — only pings Render so it stays awake (does not log into Discord).
+- **Backup:** `npm run laptop:failover` — starts the bot on your laptop only when Render is down.
 
 ## Env vars
 

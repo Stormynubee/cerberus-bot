@@ -17,6 +17,22 @@ async function main() {
   startHealthServer();
   startKeepAlive();
 
+  // Render cannot be suspended from this workspace's API. Setting
+  // HOSTING_ROLE=paused-laptop-primary keeps the web service alive (so
+  // Render does not roll back to the previous Discord-connected instance)
+  // without taking the gateway. Restore the real DISCORD_TOKEN on Render
+  // before removing this flag.
+  if (process.env.HOSTING_ROLE === "paused-laptop-primary") {
+    console.log("[greekbot] HOSTING_ROLE=paused-laptop-primary — not connecting to Discord");
+    const stop = () => {
+      console.log("[greekbot] Shutting down…");
+      process.exit(0);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+    return;
+  }
+
   const commands = await loadCommands();
   const client = createClient(commands);
 

@@ -15,6 +15,12 @@ function migrateDeploy() {
   return run("npx", ["prisma", "migrate", "deploy"]);
 }
 
+if (process.env.HOSTING_ROLE === "paused-laptop-primary") {
+  console.log("[boot] HOSTING_ROLE=paused-laptop-primary — skip migrate, idle without Discord");
+  const idle = run("node", ["dist/index.js"]);
+  process.exit(idle.status ?? 1);
+}
+
 let result = migrateDeploy();
 if (result.status !== 0) {
   console.warn("[boot] migrate deploy failed — trying to clear known failed migration…");
