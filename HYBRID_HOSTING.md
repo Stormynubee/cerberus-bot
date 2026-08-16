@@ -5,7 +5,7 @@ You cannot run GreekBot on Render **and** `npm start` on your laptop at the same
 
 ## Current: laptop primary (Render paused)
 
-Neon compute is quota-locked, so the bot runs on this Windows laptop with **native Postgres** (not Docker, not Redis).
+Neon compute is quota-locked, so the bot runs on this Windows laptop with **native Postgres 16** (not Docker, not Redis). Binaries live in `%LOCALAPPDATA%\pgsql` (the winget Windows service installer needs admin/UAC). After a reboot, Postgres starts from the Startup folder script `GreekBot-PostgreSQL.cmd`; if it is not running, double-click `%LOCALAPPDATA%\pgsql\start-postgres.cmd`.
 
 Render `greekbot` stays deployed but **must not** hold the Discord gateway. Set Render `HOSTING_ROLE=paused-laptop-primary` (and a placeholder `DISCORD_TOKEN`) so the web service idles without logging in. Restore the real token from local `.env` before making Render primary again.
 
