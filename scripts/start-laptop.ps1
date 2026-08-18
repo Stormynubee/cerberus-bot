@@ -10,8 +10,10 @@ if (-not (Test-Path ".env")) {
 $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
 $dockerExecutable = $dockerCommand.Source
 if (-not $dockerExecutable) {
-  $dockerPath = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin\docker.exe"
+  $dockerBin = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin"
+  $dockerPath = Join-Path $dockerBin "docker.exe"
   if (Test-Path $dockerPath) {
+    $env:Path = "$dockerBin;$env:Path"
     $dockerExecutable = $dockerPath
   } else {
     throw "Docker Desktop is not installed or not available on PATH."
