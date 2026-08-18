@@ -76,3 +76,38 @@ npm run start:prod
 - Presence rotates every ~45s
 - Expiry sweep every 30s refunds abandoned wagers
 - Boot recovers stuck Inferno arenas
+
+## Laptop hosting with a Cloudflare Quick Tunnel
+
+Use this path when Neon cannot be upgraded and the bot must use a local
+database. It starts a fresh local database; it does not recover or modify the
+old Neon data.
+
+1. Install Docker Desktop and ensure it is running.
+2. In `.env`, set:
+
+```env
+DATABASE_URL="postgresql://cerberus:cerberus@localhost:5432/cerberus?schema=public"
+DIRECT_URL="postgresql://cerberus:cerberus@localhost:5432/cerberus?schema=public"
+PORT=8787
+PUBLIC_STATE_API_KEY=the-same-value-used-by-the-Greek-Railway-service
+```
+
+Do not set `HOSTING_ROLE=paused-laptop-primary`; that mode intentionally skips
+the Discord gateway. Also leave `KEEP_ALIVE_URL` unset.
+
+Start the local database and bot:
+
+```powershell
+.\scripts\start-laptop.ps1
+```
+
+In a second terminal, expose only the local HTTP bridge:
+
+```powershell
+.\scripts\start-laptop-tunnel.ps1
+```
+
+Use the generated URL plus `/public/live-state` for Railway's
+`CERBERUS_LIVE_STATE_URL`. Quick Tunnel URLs are temporary and change after a
+restart. The laptop, Docker Desktop, bot, and tunnel must remain running.

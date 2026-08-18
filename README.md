@@ -79,6 +79,41 @@ Set `DISCORD_GUILD_ID` for instant slash-command sync while developing.
 
 Production: see [`DEPLOY.md`](DEPLOY.md).
 
+### Laptop hosting without Neon
+
+If Neon is unavailable or its compute quota is exhausted, the bot can run with a
+fresh local Postgres database. This does not copy or delete the old Neon data.
+
+1. Install and start Docker Desktop.
+2. In `.env`, use these local values:
+
+```env
+DATABASE_URL="postgresql://cerberus:cerberus@localhost:5432/cerberus?schema=public"
+DIRECT_URL="postgresql://cerberus:cerberus@localhost:5432/cerberus?schema=public"
+PORT=8787
+PUBLIC_STATE_API_KEY=use-the-same-value-as-the-Greek-Railway-service
+```
+
+Leave `HOSTING_ROLE` and `KEEP_ALIVE_URL` unset. Start the local stack and bot
+with:
+
+```powershell
+.\scripts\start-laptop.ps1
+```
+
+The bot's authenticated website bridge is then available at
+`http://localhost:8787/public/live-state`. To let Railway reach it without a
+Cloudflare account, run the installed `cloudflared` executable:
+
+```powershell
+.\scripts\start-laptop-tunnel.ps1
+```
+
+Set Railway's `CERBERUS_LIVE_STATE_URL` to the generated URL plus
+`/public/live-state`. The Quick Tunnel URL changes whenever the tunnel restarts,
+so update Railway again after each restart. Keep the laptop, Docker Desktop,
+bot, and tunnel running.
+
 ### Invite URL
 
 ```
