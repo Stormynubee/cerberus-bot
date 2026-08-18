@@ -49,6 +49,15 @@ Enable **Message Content Intent** in the Discord Developer Portal (Bot → Privi
 
 Flow: **Join** → **Start** → Bloodbath → Day/Night cycles → Feast → Finale.
 
+### Read-only website bridge
+
+When `PUBLIC_STATE_API_KEY` is configured, the bot exposes
+`GET /public/live-state` on the existing `0.0.0.0:$PORT` HTTP server. It returns
+only active Inferno Games, public display names, participant status, and
+timestamps. It never returns wallet balances, tokens, Discord credentials, or
+database connection details. The Greek backend calls this endpoint with the
+`x-cerberus-api-key` header and caches it briefly for the public page.
+
 ### Admin (Manage Server)
 | `/admin grant|revoke|freeze|audit` | Economy tools |
 | `/admin bigwin` | Big-win feed channel + threshold |
